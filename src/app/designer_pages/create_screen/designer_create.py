@@ -141,26 +141,7 @@ class DesignerCreateScreen(Screen):
         # Restore (un-minimise) the Kivy window
         hwnd = ctypes.windll.user32.FindWindowW(None, "UI-Validator")
         if hwnd:
-            ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-
-            # Position window on the correct monitor
-            if monitor_info and isinstance(monitor_info, dict):
-                left = monitor_info.get("left", 0)
-                top = monitor_info.get("top", 0)
-                width = monitor_info.get("width", 1920)
-                height = monitor_info.get("height", 1080)
-
-                # Center window on the selected monitor
-                window_width = 1280
-                window_height = 800
-                x = left + (width - window_width) // 2
-                y = top + (height - window_height) // 2
-
-                # SetWindowPos: hwnd, HWND_TOP=0, x, y, cx, cy, SWP_SHOWWINDOW=0x0040
-                ctypes.windll.user32.SetWindowPos(
-                    hwnd, 0, x, y, window_width, window_height, 0x0040
-                )
-
+            ctypes.windll.user32.ShowWindow(hwnd, 1)  # 1 = SW_SHOW
             ctypes.windll.user32.SetForegroundWindow(hwnd)
 
         # Pass data to the summary screen

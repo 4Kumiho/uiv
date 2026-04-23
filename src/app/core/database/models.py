@@ -27,7 +27,8 @@ class DesignerStep(Base):
     step_number = Column(Integer, nullable=False)
     action_type = Column(String, nullable=False)  # CLICK, INPUT, DRAG, SCROLL, etc.
 
-    screenshot = Column(LargeBinary, nullable=True)  # PNG image
+    screenshot = Column(LargeBinary, nullable=True)  # PNG image bytes
+    screenshot_path = Column(String, nullable=True)  # Path to PNG file
     coordinates = Column(String, nullable=True)  # JSON: {"x": 100, "y": 200}
 
     # Element matching

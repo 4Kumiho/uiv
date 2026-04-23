@@ -140,6 +140,10 @@ class DesignerSummaryScreen(Screen):
             container.add_widget(row)
             self._step_rows.append(row)
 
+        # Select first step by default if it exists
+        if self._step_rows:
+            self._on_step_selected(self._step_rows[0])
+
     def _on_step_selected(self, row: StepRow):
         """Step list item clicked."""
         if self._selected_row and self._selected_row is not row:
@@ -179,6 +183,31 @@ class DesignerSummaryScreen(Screen):
         img_widget = self.ids.step_image
         img_widget.texture = texture
         img_widget.opacity = 1
+
+        # Update OCR and ResNet metadata
+        self._update_metadata(step)
+
+    def _update_metadata(self, step):
+        """Update OCR and ResNet labels with step metadata."""
+        ocr_label = self.ids.ocr_text_label
+        resnet_label = self.ids.resnet_label
+
+        # OCR text
+        if step.ocr_text:
+            ocr_label.text = step.ocr_text[:100]  # Limit to 100 chars
+        else:
+            ocr_label.text = "[color=888888]—[/color]"
+
+        # ResNet features
+        if step.features:
+            # Features are stored as bytes, show dimension info
+            try:
+                features_array = np.frombuffer(step.features, dtype=np.float32)
+                resnet_label.text = f"[color=888888]512-dim vector ({len(features_array)} values)[/color]"
+            except Exception:
+                resnet_label.text = "[color=888888]—[/color]"
+        else:
+            resnet_label.text = "[color=888888]—[/color]"
 
     def _draw_overlays(self, bgr: np.ndarray, step) -> np.ndarray:
         """

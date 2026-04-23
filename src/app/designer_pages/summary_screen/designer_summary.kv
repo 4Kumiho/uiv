@@ -185,11 +185,10 @@
                         pos: self.pos
                         size: self.size
 
-            # ── RIGHT PANEL: screenshot viewer ────────────────────────────
-            FloatLayout:
+            # ── RIGHT PANEL: screenshot viewer + metadata ──────────────────
+            BoxLayout:
+                orientation: "vertical"
                 size_hint_x: 1
-
-                # Dark background card
                 canvas.before:
                     Color:
                         rgba: 0.06, 0.06, 0.12, 1
@@ -197,21 +196,111 @@
                         pos: self.pos
                         size: self.size
 
-                # Placeholder text when no step selected
-                Label:
-                    id: placeholder_label
-                    text: "← Select a step to view its screenshot"
-                    font_size: "14sp"
-                    color: 0.25, 0.25, 0.45, 1
-                    pos_hint: {"center_x": 0.5, "center_y": 0.5}
-                    opacity: 1 if not step_image.texture else 0
+                # Screenshot viewer (top 85%)
+                FloatLayout:
+                    size_hint_y: 0.85
 
-                # The annotated screenshot
-                Image:
-                    id: step_image
-                    pos_hint: {"center_x": 0.5, "center_y": 0.5}
-                    size_hint: 1, 1
-                    fit_mode: "contain"
-                    opacity: 0
-                    allow_stretch: True
-                    keep_ratio: True
+                    # Placeholder text when no step selected
+                    Label:
+                        id: placeholder_label
+                        text: "← Select a step to view its screenshot"
+                        font_size: "14sp"
+                        color: 0.25, 0.25, 0.45, 1
+                        pos_hint: {"center_x": 0.5, "center_y": 0.5}
+                        opacity: 1 if not step_image.texture else 0
+
+                    # The annotated screenshot
+                    Image:
+                        id: step_image
+                        pos_hint: {"center_x": 0.5, "center_y": 0.5}
+                        size_hint: 1, 1
+                        fit_mode: "contain"
+                        opacity: 0
+                        allow_stretch: True
+                        keep_ratio: True
+
+                # Metadata bar (bottom 15%)
+                BoxLayout:
+                    orientation: "horizontal"
+                    size_hint_y: 0.15
+                    spacing: dp(1)
+                    padding: [dp(12), dp(8)]
+                    canvas.before:
+                        Color:
+                            rgba: 0.08, 0.08, 0.16, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: self.size
+                        Color:
+                            rgba: 0.14, 0.14, 0.26, 1
+                        Line:
+                            points: self.x, self.y + self.height, self.x + self.width, self.y + self.height
+                            width: 1
+
+                    # OCR section
+                    BoxLayout:
+                        orientation: "vertical"
+                        size_hint_x: 0.5
+                        spacing: dp(4)
+
+                        Label:
+                            text: "OCR"
+                            font_size: "10sp"
+                            bold: True
+                            color: 0.40, 0.40, 0.65, 1
+                            size_hint_y: None
+                            height: dp(14)
+                            halign: "left"
+                            valign: "center"
+                            text_size: self.size
+
+                        Label:
+                            id: ocr_text_label
+                            text: "—"
+                            font_size: "11sp"
+                            color: 0.70, 0.70, 0.90, 1
+                            size_hint_y: None
+                            height: dp(28)
+                            halign: "left"
+                            valign: "top"
+                            text_size: self.width - dp(4), None
+                            markup: True
+
+                    # Divider
+                    Widget:
+                        size_hint_x: None
+                        width: dp(1)
+                        canvas:
+                            Color:
+                                rgba: 0.14, 0.14, 0.26, 1
+                            Rectangle:
+                                pos: self.pos
+                                size: self.size
+
+                    # ResNet section
+                    BoxLayout:
+                        orientation: "vertical"
+                        size_hint_x: 0.5
+                        spacing: dp(4)
+
+                        Label:
+                            text: "ResNet Features"
+                            font_size: "10sp"
+                            bold: True
+                            color: 0.40, 0.40, 0.65, 1
+                            size_hint_y: None
+                            height: dp(14)
+                            halign: "left"
+                            valign: "center"
+                            text_size: self.size
+
+                        Label:
+                            id: resnet_label
+                            text: "—"
+                            font_size: "11sp"
+                            color: 0.70, 0.70, 0.90, 1
+                            size_hint_y: None
+                            height: dp(28)
+                            halign: "left"
+                            valign: "top"
+                            text_size: self.width - dp(4), None

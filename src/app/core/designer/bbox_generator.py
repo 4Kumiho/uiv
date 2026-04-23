@@ -30,27 +30,19 @@ class BBoxGenerator:
         # Trova contours
         contours, _ = cv2.findContours(dilated, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Trova il contour più vicino al click point
-        best_contour = None
-        best_distance = float('inf')
-
+        # Passo 1: trova tutti i bbox che CONTENGONO il click
+        containing_contours = []
         for contour in contours:
             x, y, cw, ch = cv2.boundingRect(contour)
-
-            # Controlla se il click è dentro il bbox
             if x <= click_x <= x + cw and y <= click_y <= y + ch:
                 if cw >= min_size and ch >= min_size and cw <= max_size and ch <= max_size:
-                    best_contour = (x, y, cw, ch)
-                    break
+                    containing_contours.append((x, y, cw, ch))
 
-            # Altrimenti prendi il più vicino
-            dist = ((x + cw/2 - click_x)**2 + (y + ch/2 - click_y)**2)**0.5
-            if dist < best_distance and cw >= min_size and ch >= min_size and cw <= max_size and ch <= max_size:
-                best_distance = dist
-                best_contour = (x, y, cw, ch)
-
-        # Se non trova con contours, crea un bbox generico attorno al click
-        if best_contour is None:
+        # Passo 2: se ce ne sono, prendi il più piccolo (il più "tight")
+        if containing_contours:
+            best_contour = min(containing_contours, key=lambda b: b[2] * b[3])  # Sort by area
+        else:
+            # Passo 3: nessuno contiene il click, crea un bbox quadrato attorno al click
             size = 50
             x = max(0, click_x - size)
             y = max(0, click_y - size)
