@@ -1,0 +1,217 @@
+#:import dp kivy.metrics.dp
+
+# ---------------------------------------------------------------------------
+# StepRow rule — one row in the left panel
+# ---------------------------------------------------------------------------
+<StepRow>:
+    orientation: "horizontal"
+    padding: [dp(10), dp(6)]
+    spacing: dp(8)
+    size_hint_y: None
+    height: dp(52)
+
+    canvas.before:
+        Color:
+            rgba: root.is_selected
+        Rectangle:
+            pos: self.pos
+            size: self.size
+        # Thin bottom separator
+        Color:
+            rgba: 0.13, 0.13, 0.24, 1
+        Line:
+            points: self.x, self.y, self.x + self.width, self.y
+            width: 1
+
+    # Step number label
+    Label:
+        text: str(root.step_number)
+        font_size: "12sp"
+        color: 0.55, 0.55, 0.80, 1
+        size_hint: None, 1
+        width: dp(26)
+        halign: "right"
+        valign: "center"
+        text_size: self.size
+
+    # Action-type badge
+    BoxLayout:
+        size_hint: None, None
+        size: dp(100), dp(26)
+        pos_hint: {"center_y": 0.5}
+        canvas.before:
+            Color:
+                rgba: root.badge_color[0], root.badge_color[1], root.badge_color[2], 0.22
+            RoundedRectangle:
+                pos: self.pos
+                size: self.size
+                radius: [dp(4)]
+            Color:
+                rgba: root.badge_color
+            Line:
+                rounded_rectangle: (self.x, self.y, self.width, self.height, dp(4))
+                width: 1
+
+        Label:
+            text: root.action_label
+            font_size: "11sp"
+            bold: True
+            color: root.badge_color[0] + 0.3, root.badge_color[1] + 0.3, root.badge_color[2] + 0.3, 1
+            halign: "center"
+            valign: "center"
+            text_size: self.size
+
+
+# ---------------------------------------------------------------------------
+# DesignerSummaryScreen — full two-panel layout
+# ---------------------------------------------------------------------------
+<DesignerSummaryScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.05, 0.05, 0.10, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        orientation: "vertical"
+        spacing: 0
+
+        # ── Header bar ────────────────────────────────────────────────────
+        BoxLayout:
+            size_hint_y: None
+            height: dp(56)
+            padding: [dp(12), 0, dp(24), 0]
+            spacing: dp(8)
+            canvas.before:
+                Color:
+                    rgba: 0.08, 0.08, 0.16, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+
+            Button:
+                text: "< Back"
+                font_size: "13sp"
+                size_hint: None, None
+                size: dp(80), dp(40)
+                pos_hint: {"center_y": 0.5}
+                background_color: 0, 0, 0, 0
+                color: 0.80, 0.90, 1.0, 1
+                on_release: root.go_back()
+                canvas.before:
+                    Color:
+                        rgba: 0.12, 0.12, 0.22, 0.7
+                    RoundedRectangle:
+                        pos: self.pos
+                        size: self.size
+                        radius: [dp(6)]
+
+            Label:
+                text: "[b]Designer[/b]  —  " + root._session_label
+                markup: True
+                font_size: "16sp"
+                color: 0.85, 0.85, 1.0, 1
+                halign: "left"
+                valign: "center"
+                text_size: self.size
+
+        # ── Two-panel body ────────────────────────────────────────────────
+        BoxLayout:
+            orientation: "horizontal"
+            spacing: 0
+            size_hint_y: 1
+
+            # ── LEFT PANEL: step list ─────────────────────────────────────
+            BoxLayout:
+                size_hint_x: None
+                width: dp(280)
+                orientation: "vertical"
+                canvas.before:
+                    Color:
+                        rgba: 0.07, 0.07, 0.14, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+
+                # Panel title
+                Label:
+                    text: "Steps"
+                    font_size: "11sp"
+                    bold: True
+                    color: 0.40, 0.40, 0.65, 1
+                    size_hint_y: None
+                    height: dp(32)
+                    halign: "left"
+                    valign: "center"
+                    text_size: self.width - dp(20), self.height
+                    padding: [dp(12), 0]
+
+                # Separator line
+                Widget:
+                    size_hint_y: None
+                    height: dp(1)
+                    canvas:
+                        Color:
+                            rgba: 0.14, 0.14, 0.26, 1
+                        Rectangle:
+                            pos: self.pos
+                            size: self.size
+
+                # Scrollable step rows
+                ScrollView:
+                    do_scroll_x: False
+                    do_scroll_y: True
+                    bar_width: dp(4)
+                    bar_color: 0.25, 0.55, 0.95, 0.6
+                    bar_inactive_color: 0.15, 0.15, 0.30, 0.4
+                    scroll_type: ['bars', 'content']
+
+                    BoxLayout:
+                        id: step_list_container
+                        orientation: "vertical"
+                        size_hint_y: None
+                        height: self.minimum_height
+                        spacing: 0
+
+            # Thin vertical divider between panels
+            Widget:
+                size_hint_x: None
+                width: dp(1)
+                canvas:
+                    Color:
+                        rgba: 0.14, 0.14, 0.26, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+
+            # ── RIGHT PANEL: screenshot viewer ────────────────────────────
+            FloatLayout:
+                size_hint_x: 1
+
+                # Dark background card
+                canvas.before:
+                    Color:
+                        rgba: 0.06, 0.06, 0.12, 1
+                    Rectangle:
+                        pos: self.pos
+                        size: self.size
+
+                # Placeholder text when no step selected
+                Label:
+                    id: placeholder_label
+                    text: "← Select a step to view its screenshot"
+                    font_size: "14sp"
+                    color: 0.25, 0.25, 0.45, 1
+                    pos_hint: {"center_x": 0.5, "center_y": 0.5}
+                    opacity: 1 if not step_image.texture else 0
+
+                # The annotated screenshot
+                Image:
+                    id: step_image
+                    pos_hint: {"center_x": 0.5, "center_y": 0.5}
+                    size_hint: 1, 1
+                    fit_mode: "contain"
+                    opacity: 0
+                    allow_stretch: True
+                    keep_ratio: True

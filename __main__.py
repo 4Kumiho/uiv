@@ -12,6 +12,7 @@ from kivy.uix.screenmanager import ScreenManager, SlideTransition
 from src.app.menu_pages.main_screen.main_screen import MainScreen
 from src.app.designer_pages.create_screen.designer_create import DesignerCreateScreen
 from src.app.designer_pages.open_screen.designer_open import DesignerOpenScreen
+from src.app.designer_pages.summary_screen.designer_summary import DesignerSummaryScreen
 from src.app.executor_pages.create_screen.executor_create import ExecutorCreateScreen
 from src.app.executor_pages.open_screen.executor_open import ExecutorOpenScreen
 
@@ -24,9 +25,12 @@ class UIValidatorApp(App):
         Window.clearcolor = (0.05, 0.05, 0.10, 1)
 
         sm = ScreenManager(transition=SlideTransition(duration=0.20))
+
         sm.add_widget(MainScreen(name=MainScreen.SCREEN_NAME))
         sm.add_widget(DesignerCreateScreen(name=DesignerCreateScreen.SCREEN_NAME))
         sm.add_widget(DesignerOpenScreen(name=DesignerOpenScreen.SCREEN_NAME))
+        sm.add_widget(DesignerSummaryScreen(name=DesignerSummaryScreen.SCREEN_NAME))
+        
         sm.add_widget(ExecutorCreateScreen(name=ExecutorCreateScreen.SCREEN_NAME))
         sm.add_widget(ExecutorOpenScreen(name=ExecutorOpenScreen.SCREEN_NAME))
         sm.current = MainScreen.SCREEN_NAME

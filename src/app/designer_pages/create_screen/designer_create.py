@@ -2,11 +2,14 @@ import os
 import subprocess
 import sys
 import ctypes
+import threading
+import json
 from kivy.uix.screenmanager import Screen
 from kivy.lang import Builder
 from kivy.properties import StringProperty
 from kivy.uix.spinner import SpinnerOption
 from kivy.factory import Factory
+from kivy.clock import Clock
 
 
 class StyledSpinnerOption(SpinnerOption):
@@ -101,10 +104,76 @@ class DesignerCreateScreen(Screen):
 
         # Launch with output to log file
         with open(log_file, 'a') as f:
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 [sys.executable, designer_main, name, output_folder, str(monitor_num)],
                 stdout=f,
                 stderr=subprocess.STDOUT
             )
 
+        # Store project folder for background thread
+        self._project_folder = project_folder
+
+        # Background thread: wait for subprocess exit
+        t = threading.Thread(target=self._wait_for_subprocess, args=(proc,), daemon=True)
+        t.start()
+
+    def _wait_for_subprocess(self, proc):
+        """Runs on a background thread. Blocks until the designer subprocess exits."""
+        proc.wait()
+
+        signal_path = os.path.join(self._project_folder, "session_done.json")
+        try:
+            with open(signal_path, 'r') as f:
+                data = json.load(f)
+            session_id = data["session_id"]
+            db_path = data["db_path"]
+            monitor_info = data.get("monitor_info")
+        except Exception:
+            # Fallback if signal file missing
+            Clock.schedule_once(lambda _: self._restore_and_go_back(), 0)
+            return
+
+        # Schedule on Kivy main thread
+        Clock.schedule_once(lambda _: self._on_session_done(session_id, db_path, monitor_info), 0)
+
+    def _on_session_done(self, session_id, db_path, monitor_info=None):
+        """Called on the Kivy main thread after the subprocess finishes."""
+        # Restore (un-minimise) the Kivy window
+        hwnd = ctypes.windll.user32.FindWindowW(None, "UI-Validator")
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+
+            # Position window on the correct monitor
+            if monitor_info and isinstance(monitor_info, dict):
+                left = monitor_info.get("left", 0)
+                top = monitor_info.get("top", 0)
+                width = monitor_info.get("width", 1920)
+                height = monitor_info.get("height", 1080)
+
+                # Center window on the selected monitor
+                window_width = 1280
+                window_height = 800
+                x = left + (width - window_width) // 2
+                y = top + (height - window_height) // 2
+
+                # SetWindowPos: hwnd, HWND_TOP=0, x, y, cx, cy, SWP_SHOWWINDOW=0x0040
+                ctypes.windll.user32.SetWindowPos(
+                    hwnd, 0, x, y, window_width, window_height, 0x0040
+                )
+
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+
+        # Pass data to the summary screen
+        summary = self.manager.get_screen("designer_summary")
+        summary.load_session(session_id, db_path)
+
+        # Navigate
+        self.manager.transition.direction = "left"
+        self.manager.current = "designer_summary"
+
+    def _restore_and_go_back(self):
+        """Fallback: restore window and go home."""
+        hwnd = ctypes.windll.user32.FindWindowW(None, "UI-Validator")
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 9)
         self.go_back()
