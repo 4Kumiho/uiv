@@ -89,6 +89,22 @@ class DesignerCreateScreen(Screen):
         designer_main = os.path.abspath(os.path.join(
             os.path.dirname(__file__), '..', '..', 'core', 'designer', 'main_designer.py'
         ))
-        subprocess.Popen([sys.executable, designer_main, name, output_folder, str(monitor_num)])
+
+        # Create output folder structure
+        project_folder = os.path.join(output_folder, name)
+        os.makedirs(project_folder, exist_ok=True)
+
+        # Log file for debugging
+        log_file = os.path.join(project_folder, f"{name}_debug.log")
+        with open(log_file, 'w') as f:
+            f.write(f"Designer session: {name}\nMonitor: {monitor_num}\n\n")
+
+        # Launch with output to log file
+        with open(log_file, 'a') as f:
+            subprocess.Popen(
+                [sys.executable, designer_main, name, output_folder, str(monitor_num)],
+                stdout=f,
+                stderr=subprocess.STDOUT
+            )
 
         self.go_back()
