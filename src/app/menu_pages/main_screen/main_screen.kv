@@ -1,0 +1,268 @@
+#:import dp kivy.metrics.dp
+
+<MainScreen>:
+    canvas.before:
+        Color:
+            rgba: 0.05, 0.05, 0.10, 1
+        Rectangle:
+            pos: self.pos
+            size: self.size
+
+    BoxLayout:
+        orientation: "vertical"
+        spacing: 0
+
+        BoxLayout:
+            size_hint_y: None
+            height: dp(56)
+            padding: [dp(20), 0]
+            canvas.before:
+                Color:
+                    rgba: 0.06, 0.06, 0.13, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+
+            Image:
+                source: "src/app/assets/logo_uiv.png"
+                size_hint: None, None
+                size: dp(180), dp(52)
+                pos_hint: {"center_y": 0.5}
+                fit_mode: "contain"
+
+            Widget:
+                size_hint_x: 1
+
+            Label:
+                text: "v0.1.0"
+                font_size: "11sp"
+                color: 0.30, 0.30, 0.50, 1
+                size_hint: None, 1
+                width: dp(60)
+                halign: "right"
+                valign: "center"
+                text_size: self.size
+
+        GridLayout:
+            cols: 3
+            padding: [dp(28), dp(20)]
+            spacing: dp(20)
+            size_hint_y: 1
+
+            BoxLayout:
+                orientation: "vertical"
+                padding: [dp(20), dp(16)]
+                spacing: dp(16)
+                canvas.before:
+                    Color:
+                        rgba: 0.08, 0.09, 0.18, 1
+                    RoundedRectangle:
+                        pos: self.pos
+                        size: self.size
+                        radius: [dp(14)]
+                    Color:
+                        rgba: 0.35, 0.53, 1.0, 0.25
+                    Line:
+                        rounded_rectangle: (self.x+1, self.y+1, self.width-2, self.height-2, dp(14))
+                        width: 1.2
+
+                Image:
+                    source: "src/app/assets/icon_designer.png"
+                    size_hint_y: None
+                    height: dp(72)
+                    fit_mode: "contain"
+
+                Image:
+                    source: "src/app/assets/wordmark_designer.png"
+                    size_hint_y: None
+                    height: dp(42)
+                    fit_mode: "contain"
+
+                Label:
+                    text: "Registra le tue azioni sullo\nschermo in automatico."
+                    font_size: "11sp"
+                    color: 0.48, 0.48, 0.72, 1
+                    size_hint_y: 1
+                    halign: "center"
+                    valign: "top"
+                    text_size: self.size
+
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(38)
+                    spacing: dp(8)
+
+                    Button:
+                        text: "Create"
+                        bold: True
+                        font_size: "13sp"
+                        background_color: 0, 0, 0, 0
+                        color: 1, 1, 1, 1
+                        on_release: root.go_designer()
+                        canvas.before:
+                            Color:
+                                rgba: 0.35, 0.53, 1.0, 1
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [dp(8)]
+
+                    Button:
+                        text: "Open"
+                        bold: True
+                        font_size: "13sp"
+                        background_color: 0, 0, 0, 0
+                        color: 1, 1, 1, 1
+                        on_release: root.go_designer_open()
+                        canvas.before:
+                            Color:
+                                rgba: 0.35, 0.53, 1.0, 0.6
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [dp(8)]
+
+            BoxLayout:
+                orientation: "vertical"
+                padding: [dp(20), dp(16)]
+                spacing: dp(16)
+                canvas.before:
+                    Color:
+                        rgba: 0.08, 0.09, 0.18, 1
+                    RoundedRectangle:
+                        pos: self.pos
+                        size: self.size
+                        radius: [dp(14)]
+                    Color:
+                        rgba: 0.16, 0.75, 0.47, 0.25
+                    Line:
+                        rounded_rectangle: (self.x+1, self.y+1, self.width-2, self.height-2, dp(14))
+                        width: 1.2
+
+                Image:
+                    source: "src/app/assets/icon_executor.png"
+                    size_hint_y: None
+                    height: dp(72)
+                    fit_mode: "contain"
+
+                Image:
+                    source: "src/app/assets/wordmark_executor.png"
+                    size_hint_y: None
+                    height: dp(42)
+                    fit_mode: "contain"
+
+                Label:
+                    text: "Riproduci una sessione e\nverifica le differenze visive."
+                    font_size: "11sp"
+                    color: 0.48, 0.48, 0.72, 1
+                    size_hint_y: 1
+                    halign: "center"
+                    valign: "top"
+                    text_size: self.size
+
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(38)
+                    spacing: dp(8)
+
+                    Button:
+                        text: "Create"
+                        bold: True
+                        font_size: "13sp"
+                        background_color: 0, 0, 0, 0
+                        color: 1, 1, 1, 1
+                        on_release: root.go_executor()
+                        canvas.before:
+                            Color:
+                                rgba: 0.16, 0.75, 0.47, 1
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [dp(8)]
+
+                    Button:
+                        text: "Open"
+                        bold: True
+                        font_size: "13sp"
+                        background_color: 0, 0, 0, 0
+                        color: 1, 1, 1, 1
+                        on_release: root.go_executor_open()
+                        canvas.before:
+                            Color:
+                                rgba: 0.16, 0.75, 0.47, 0.6
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [dp(8)]
+
+            BoxLayout:
+                orientation: "vertical"
+                padding: [dp(20), dp(16)]
+                spacing: dp(16)
+                canvas.before:
+                    Color:
+                        rgba: 0.08, 0.09, 0.18, 1
+                    RoundedRectangle:
+                        pos: self.pos
+                        size: self.size
+                        radius: [dp(14)]
+                    Color:
+                        rgba: 1.0, 0.65, 0.35, 0.25
+                    Line:
+                        rounded_rectangle: (self.x+1, self.y+1, self.width-2, self.height-2, dp(14))
+                        width: 1.2
+
+                Image:
+                    source: "src/app/assets/icon_test.png"
+                    size_hint_y: None
+                    height: dp(72)
+                    fit_mode: "contain"
+
+                Image:
+                    source: "src/app/assets/wordmark_test.png"
+                    size_hint_y: None
+                    height: dp(42)
+                    fit_mode: "contain"
+
+                Label:
+                    text: "Esegui più test con\ndipendenze automatiche."
+                    font_size: "11sp"
+                    color: 0.48, 0.48, 0.72, 1
+                    size_hint_y: 1
+                    halign: "center"
+                    valign: "top"
+                    text_size: self.size
+
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(38)
+                    spacing: dp(8)
+
+                    Button:
+                        text: "Create"
+                        bold: True
+                        font_size: "13sp"
+                        background_color: 0, 0, 0, 0
+                        color: 1, 1, 1, 1
+                        on_release: root.go_ambient()
+                        canvas.before:
+                            Color:
+                                rgba: 1.0, 0.65, 0.35, 1
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [dp(8)]
+
+                    Button:
+                        text: "Open"
+                        bold: True
+                        font_size: "13sp"
+                        background_color: 0, 0, 0, 0
+                        color: 1, 1, 1, 1
+                        canvas.before:
+                            Color:
+                                rgba: 1.0, 0.65, 0.35, 0.6
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [dp(8)]

@@ -1,0 +1,15 @@
+# Core UI Framework
+kivy>=2.3.0
+
+# Designer - Screenshot & Action Capture
+opencv-python
+pynput
+Pillow
+sqlalchemy
+numpy
+
+# Executor - Matching & Feature Extraction (optional, install separately if needed)
+# torch
+# torchvision
+# scipy
+# easyocr
