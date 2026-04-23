@@ -1,16 +1,12 @@
 import os
+import subprocess
 import sys
-import threading
+import ctypes
 from kivy.uix.screenmanager import Screen
 from kivy.lang import Builder
 from kivy.properties import StringProperty
 from kivy.uix.spinner import SpinnerOption
 from kivy.factory import Factory
-
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-
-from main_designer import DesignerApp
 
 
 class StyledSpinnerOption(SpinnerOption):
@@ -82,13 +78,17 @@ class DesignerCreateScreen(Screen):
             self._error_msg = "Manca: Monitor da utilizzare"
             return
 
-        db_path = os.path.join(output_folder, f"{name}.db")
+        monitor_num = int(monitor.split()[1]) - 1
 
-        def run_designer():
-            app = DesignerApp(name, db_path)
-            app.start()
+        # Minimizza la finestra Kivy
+        hwnd = ctypes.windll.user32.FindWindowW(None, "UI-Validator")
+        if hwnd:
+            ctypes.windll.user32.ShowWindow(hwnd, 6)  # 6 = SW_MINIMIZE
 
-        thread = threading.Thread(target=run_designer, daemon=True)
-        thread.start()
+        # Launch designer from core/designer/
+        designer_main = os.path.abspath(os.path.join(
+            os.path.dirname(__file__), '..', '..', 'core', 'designer', 'main_designer.py'
+        ))
+        subprocess.Popen([sys.executable, designer_main, name, output_folder, str(monitor_num)])
 
         self.go_back()
