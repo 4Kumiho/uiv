@@ -3,8 +3,6 @@ DesignerSummaryScreen — shows recorded steps + annotated screenshots.
 """
 import os
 import json
-import sys
-import io
 
 import cv2
 import numpy as np
@@ -103,14 +101,7 @@ class DesignerSummaryScreen(Screen):
     def _populate(self, _=None):
         """Query the DB and build the left-panel list."""
         try:
-            # Import here to avoid circular imports
-            db_dir = os.path.abspath(os.path.join(
-                os.path.dirname(__file__), '..', '..', 'core', 'database'
-            ))
-            if db_dir not in sys.path:
-                sys.path.insert(0, db_dir)
-
-            from designer_db import DesignerDatabase
+            from src.app.core.database.designer_db import DesignerDatabase
             db = DesignerDatabase(self._db_path)
             session_obj = db.get_session(self._session_id)
             self._steps = db.get_steps(self._session_id)

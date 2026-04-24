@@ -13,8 +13,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'database'))
 from screenshot_handler import ScreenshotHandler
 from action_capture import ActionCapture
 from mini_ui import MiniUI
-from designer_db import DesignerDatabase
-from models import DesignerStep
+from src.app.core.database.designer_db import DesignerDatabase
+from src.app.core.database.models import DesignerStep
 from _bbox_generator import BBoxGenerator
 from _ocr_generator import OCRGenerator
 from _feature_generator import FeatureGenerator
