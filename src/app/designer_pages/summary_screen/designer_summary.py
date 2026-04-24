@@ -83,6 +83,11 @@ class DesignerSummaryScreen(Screen):
         self._selected_row = None
         self._session_id = None
         self._db_path = None
+        self._current_step = None
+        self._current_screenshot_bgr = None
+        self._bbox_dragging = None
+        self._drag_edge_type = None
+        self._last_touch_pos = None
 
     def load_session(self, session_id: int, db_path: str):
         """Load a session from DB; safe to call from the main thread."""
@@ -167,6 +172,12 @@ class DesignerSummaryScreen(Screen):
             self._clear_image()
             return
 
+        # Store original screenshot and step for touch handling
+        self._current_screenshot_bgr = bgr.copy()
+        self._current_step = step
+        self._bbox_dragging = None
+        self._drag_edge_type = None
+
         # Draw overlays
         bgr = self._draw_overlays(bgr, step)
 
@@ -183,6 +194,11 @@ class DesignerSummaryScreen(Screen):
         img_widget = self.ids.step_image
         img_widget.texture = texture
         img_widget.opacity = 1
+
+        # Bind touch events for bbox manipulation
+        img_widget.bind(on_touch_down=self._on_image_touch_down)
+        img_widget.bind(on_touch_move=self._on_image_touch_move)
+        img_widget.bind(on_touch_up=self._on_image_touch_up)
 
         # Update OCR and ResNet metadata
         self._update_metadata(step)
@@ -312,6 +328,109 @@ class DesignerSummaryScreen(Screen):
         img_widget = self.ids.step_image
         img_widget.texture = None
         img_widget.opacity = 0
+
+    # ==================== TOUCH HANDLING FOR BBOX MANIPULATION ====================
+
+    def _on_image_touch_down(self, widget, touch):
+        """Handle touch down on image - detect if clicking on a bbox."""
+        if not self._current_step or self._current_screenshot_bgr is None:
+            return
+
+        # Check if touch is within image bounds
+        if not widget.collide_point(*touch.pos):
+            return
+
+        # Parse bbox from current step
+        bbox = None
+        if self._current_step.bbox:
+            try:
+                bbox = json.loads(self._current_step.bbox)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        if not bbox:
+            return
+
+        # Detect which part of bbox is being clicked
+        edge_type = self._detect_bbox_edge(touch.pos, widget, bbox)
+        if edge_type:
+            self._bbox_dragging = bbox
+            self._drag_edge_type = edge_type
+            self._last_touch_pos = touch.pos
+            return True
+
+        return False
+
+    def _on_image_touch_move(self, widget, touch):
+        """Handle touch move - drag bbox."""
+        if not self._bbox_dragging or not self._last_touch_pos:
+            return False
+
+        # Calculate delta
+        dx = touch.x - self._last_touch_pos[0]
+        dy = touch.y - self._last_touch_pos[1]
+
+        # Apply drag to bbox
+        self._apply_bbox_drag(dx, dy, widget)
+        self._last_touch_pos = touch.pos
+        self._redraw_image_with_modified_bbox()
+        return True
+
+    def _on_image_touch_up(self, widget, touch):
+        """Handle touch up - finalize drag."""
+        self._bbox_dragging = None
+        self._drag_edge_type = None
+        self._last_touch_pos = None
+        return False
+
+    def _detect_bbox_edge(self, touch_pos, widget, bbox):
+        """Detect which edge/corner of bbox is being touched."""
+        threshold = 15  # pixel threshold for edge detection
+
+        # Convert image coordinates to touch position (approximation)
+        # This is a simplified version - ideally we'd use the texture's position
+        x, y, w, h = bbox['x'], bbox['y'], bbox['w'], bbox['h']
+
+        # Check if near center (move)
+        if (x + w/2 - threshold <= touch_pos[0] <= x + w/2 + threshold and
+            y + h/2 - threshold <= touch_pos[1] <= y + h/2 + threshold):
+            return 'move'
+
+        # Check corners and edges
+        # For now, simplified - just detect if within bbox area
+        if x <= touch_pos[0] <= x + w and y <= touch_pos[1] <= y + h:
+            return 'move'
+
+        return None
+
+    def _apply_bbox_drag(self, dx, dy, widget):
+        """Apply drag operation to bbox."""
+        if not self._bbox_dragging:
+            return
+
+        bbox = self._bbox_dragging
+        if self._drag_edge_type == 'move':
+            bbox['x'] += int(dx)
+            bbox['y'] += int(dy)
+
+    def _redraw_image_with_modified_bbox(self):
+        """Redraw the image with the modified bbox."""
+        if self._current_screenshot_bgr is None or not self._current_step:
+            return
+
+        # Draw with modified bbox
+        bgr = self._draw_overlays(self._current_screenshot_bgr.copy(), self._current_step)
+
+        # Convert and display
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        rgb = cv2.flip(rgb, 0)
+
+        h, w, _ = rgb.shape
+        texture = Texture.create(size=(w, h), colorfmt='rgb')
+        texture.blit_buffer(rgb.tobytes(), colorfmt='rgb', bufferfmt='ubyte')
+
+        img_widget = self.ids.step_image
+        img_widget.texture = texture
 
     def go_back(self):
         """Navigate back to main screen."""
