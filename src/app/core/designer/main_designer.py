@@ -106,13 +106,12 @@ class DesignerApp:
         )
         self.action_capture.start_recording()
         self.logger.info("=" * 60)
-        self.logger.info("RECORDING STARTED - Preloading models...")
+        self.logger.info("RECORDING STARTED - Downloading and initializing models...")
         self.logger.info("=" * 60)
 
-        # Precaria modelli in background
-        import threading
-        thread = threading.Thread(target=self._preload_models, daemon=True)
-        thread.start()
+        # Preload models BEFORE recording (blocking)
+        self._preload_models()
+        self.logger.info("Models ready! Recording can begin.")
 
         # Loop principale
         while not self.should_stop:

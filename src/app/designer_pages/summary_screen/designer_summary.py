@@ -938,24 +938,70 @@ class DesignerSummaryScreen(Screen):
                         if bbox and 'x' in bbox:
                             # Launch OCR/ResNet worker process
                             worker_path = os.path.join(os.path.dirname(__file__), '..', '..', 'core', 'designer', '_ocr_feature_update.py')
-                            result = subprocess.run(
-                                [sys.executable, worker_path, temp_screenshot_path, step.bbox],
-                                capture_output=True,
-                                text=True,
-                                timeout=120
-                            )
-                            if result.returncode == 0:
-                                output = json.loads(result.stdout)
-                                if "error" not in output:
-                                    step.ocr_text = output.get("ocr_text", "")
-                                    # Convert hex string back to bytes
-                                    features_hex = output.get("features")
-                                    step.features = bytes.fromhex(features_hex) if isinstance(features_hex, str) else features_hex
-                                    logger.info(f"Step {step.step_number} bbox 1: OCR/ResNet updated")
-                                else:
-                                    logger.warning(f"Step {step.step_number} bbox 1 error: {output['error']}")
-                            else:
-                                logger.error(f"Worker error: {result.stderr}")
+                            try:
+                                # Use temp files instead of pipe (capture_output=True) to avoid easyocr crash
+                                import tempfile
+                                with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.txt') as stdout_file:
+                                    stdout_path = stdout_file.name
+                                with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.txt') as stderr_file:
+                                    stderr_path = stderr_file.name
+
+                                try:
+                                    with open(stdout_path, 'w') as stdout_f, open(stderr_path, 'w') as stderr_f:
+                                        result = subprocess.run(
+                                            [sys.executable, worker_path, temp_screenshot_path, step.bbox],
+                                            stdout=stdout_f,
+                                            stderr=stderr_f,
+                                            timeout=600  # 10 minutes for model download on first run
+                                        )
+
+                                    # Read output from files
+                                    with open(stdout_path, 'r') as f:
+                                        stdout_content = f.read()
+                                    with open(stderr_path, 'r') as f:
+                                        stderr_content = f.read()
+
+                                    # Clean up temp files
+                                    os.unlink(stdout_path)
+                                    os.unlink(stderr_path)
+
+                                    if result.returncode == 0 and stdout_content:
+                                        try:
+                                            # Find the first { to skip any logs before JSON
+                                            json_start = stdout_content.find('{')
+                                            if json_start >= 0:
+                                                json_str = stdout_content[json_start:]
+                                                output = json.loads(json_str)
+                                            else:
+                                                logger.error(f"No JSON found in worker output: {stdout_content[:200]}")
+                                                output = {"error": "No JSON in worker output"}
+                                        except json.JSONDecodeError as e:
+                                            logger.error(f"JSON parse error from worker: {e}, stdout: {stdout_content[:200]}")
+                                            output = {"error": "Invalid JSON from worker"}
+
+                                        if "error" not in output:
+                                            step.ocr_text = output.get("ocr_text", "")
+                                            # Convert hex string back to bytes
+                                            features_hex = output.get("features")
+                                            step.features = bytes.fromhex(features_hex) if isinstance(features_hex, str) else features_hex
+                                            logger.info(f"Step {step.step_number} bbox 1: OCR/ResNet updated")
+                                        else:
+                                            logger.warning(f"Step {step.step_number} bbox 1 error: {output['error']}")
+                                    else:
+                                        logger.error(f"Worker failed with returncode {result.returncode}")
+                                        logger.error(f"Worker stderr: {stderr_content[:500]}")
+                                        logger.error(f"Worker stdout: {stdout_content[:500]}")
+                                finally:
+                                    try:
+                                        os.unlink(stdout_path)
+                                        os.unlink(stderr_path)
+                                    except:
+                                        pass
+
+                            except subprocess.TimeoutExpired:
+                                logger.error(f"Worker timeout (>600s) - model download issue?")
+                            except Exception as e:
+                                logger.error(f"Worker subprocess error: {e}")
                     except (json.JSONDecodeError, TypeError) as e:
                         logger.error(f"Error processing step {step.step_number}: {e}")
 
@@ -966,24 +1012,69 @@ class DesignerSummaryScreen(Screen):
                         if bbox and 'x' in bbox:
                             # Launch OCR/ResNet worker process
                             worker_path = os.path.join(os.path.dirname(__file__), '..', '..', 'core', 'designer', '_ocr_feature_update.py')
-                            result = subprocess.run(
-                                [sys.executable, worker_path, temp_screenshot_path, step.drag_end_bbox],
-                                capture_output=True,
-                                text=True,
-                                timeout=30
-                            )
-                            if result.returncode == 0:
-                                output = json.loads(result.stdout)
-                                if "error" not in output:
-                                    step.drag_end_ocr_text = output.get("ocr_text", "")
-                                    # Convert hex string back to bytes
-                                    features_hex = output.get("features")
-                                    step.drag_end_features = bytes.fromhex(features_hex) if isinstance(features_hex, str) else features_hex
-                                    logger.info(f"Step {step.step_number} bbox 2: OCR/ResNet updated")
-                                else:
-                                    logger.warning(f"Step {step.step_number} bbox 2 error: {output['error']}")
-                            else:
-                                logger.error(f"Worker error: {result.stderr}")
+                            try:
+                                # Use temp files instead of pipe (capture_output=True) to avoid easyocr crash
+                                import tempfile
+                                with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.txt') as stdout_file:
+                                    stdout_path = stdout_file.name
+                                with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.txt') as stderr_file:
+                                    stderr_path = stderr_file.name
+
+                                try:
+                                    with open(stdout_path, 'w') as stdout_f, open(stderr_path, 'w') as stderr_f:
+                                        result = subprocess.run(
+                                            [sys.executable, worker_path, temp_screenshot_path, step.drag_end_bbox],
+                                            stdout=stdout_f,
+                                            stderr=stderr_f,
+                                            timeout=30
+                                        )
+
+                                    # Read output from files
+                                    with open(stdout_path, 'r') as f:
+                                        stdout_content = f.read()
+                                    with open(stderr_path, 'r') as f:
+                                        stderr_content = f.read()
+
+                                    # Clean up temp files
+                                    os.unlink(stdout_path)
+                                    os.unlink(stderr_path)
+
+                                    if result.returncode == 0 and stdout_content:
+                                        try:
+                                            # Find the first { to skip any logs before JSON
+                                            json_start = stdout_content.find('{')
+                                            if json_start >= 0:
+                                                json_str = stdout_content[json_start:]
+                                                output = json.loads(json_str)
+                                            else:
+                                                logger.error(f"No JSON found in worker output: {stdout_content[:200]}")
+                                                output = {"error": "No JSON in worker output"}
+                                        except json.JSONDecodeError as e:
+                                            logger.error(f"JSON parse error from worker: {e}, stdout: {stdout_content[:200]}")
+                                            output = {"error": "Invalid JSON from worker"}
+
+                                        if "error" not in output:
+                                            step.drag_end_ocr_text = output.get("ocr_text", "")
+                                            # Convert hex string back to bytes
+                                            features_hex = output.get("features")
+                                            step.drag_end_features = bytes.fromhex(features_hex) if isinstance(features_hex, str) else features_hex
+                                            logger.info(f"Step {step.step_number} bbox 2: OCR/ResNet updated")
+                                        else:
+                                            logger.warning(f"Step {step.step_number} bbox 2 error: {output['error']}")
+                                    else:
+                                        logger.error(f"Worker failed with returncode {result.returncode}")
+                                        logger.error(f"Worker stderr: {stderr_content[:500]}")
+                                        logger.error(f"Worker stdout: {stdout_content[:500]}")
+                                finally:
+                                    try:
+                                        os.unlink(stdout_path)
+                                        os.unlink(stderr_path)
+                                    except:
+                                        pass
+                            except subprocess.TimeoutExpired:
+                                logger.error(f"Worker timeout (>30s)")
+                            except Exception as e:
+                                logger.error(f"Worker subprocess error: {e}")
                     except (json.JSONDecodeError, TypeError) as e:
                         logger.error(f"Error processing step {step.step_number}: {e}")
             finally:
