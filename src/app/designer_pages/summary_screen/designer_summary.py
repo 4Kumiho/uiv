@@ -5,13 +5,14 @@ import os
 import sys
 import json
 import logging
+import threading
 
 import cv2
 import numpy as np
 
 from kivy.uix.screenmanager import Screen
 from kivy.lang import Builder
-from kivy.properties import StringProperty, NumericProperty, ListProperty
+from kivy.properties import StringProperty, NumericProperty, ListProperty, BooleanProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.graphics.texture import Texture
@@ -83,6 +84,11 @@ class DesignerSummaryScreen(Screen):
     SCREEN_NAME = "designer_summary"
     _session_label = StringProperty("—")
     session_modified = ListProperty([False])  # For KV binding
+    button_color = ListProperty([0.35, 0.85, 0.95, 0.3])
+    button_bg_color = ListProperty([0.35, 0.53, 1.0, 0.3])
+    button_border_color = ListProperty([0.50, 0.50, 0.60, 0.3])
+    saving = BooleanProperty(False)  # Track if currently saving
+    save_progress = NumericProperty(0)  # Progress 0-1
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -107,26 +113,16 @@ class DesignerSummaryScreen(Screen):
         self.ocr_generator = OCRGenerator()
         self.feature_generator = FeatureGenerator()
 
-    @property
-    def button_color(self):
-        """Button color based on modified state."""
+    def _update_button_colors(self):
+        """Update button colors based on modified state."""
         if self.session_modified and self.session_modified[0]:
-            return (0.35, 0.85, 0.95, 1)
-        return (0.35, 0.85, 0.95, 0.3)
-
-    @property
-    def button_bg_color(self):
-        """Button background color based on modified state."""
-        if self.session_modified and self.session_modified[0]:
-            return (0.35, 0.53, 1.0, 1)
-        return (0.35, 0.53, 1.0, 0.3)
-
-    @property
-    def button_border_color(self):
-        """Button border color based on modified state."""
-        if self.session_modified and self.session_modified[0]:
-            return (0.50, 0.50, 0.60, 1)
-        return (0.50, 0.50, 0.60, 0.3)
+            self.button_color = [0.35, 0.85, 0.95, 1]
+            self.button_bg_color = [0.35, 0.53, 1.0, 1]
+            self.button_border_color = [0.50, 0.50, 0.60, 1]
+        else:
+            self.button_color = [0.35, 0.85, 0.95, 0.3]
+            self.button_bg_color = [0.35, 0.53, 1.0, 0.3]
+            self.button_border_color = [0.50, 0.50, 0.60, 0.3]
 
     def load_session(self, session_id: int, db_path: str):
         """Load a session from DB; safe to call from the main thread."""
@@ -716,6 +712,10 @@ class DesignerSummaryScreen(Screen):
         # Finalize click point drag
         if hasattr(self, '_click_point_dragging') and self._click_point_dragging is not None and self._current_step:
             self._modified_steps.add(self._current_step)
+            # Mark session as modified
+            self._session_modified = True
+            self.session_modified = [True]
+            self._update_button_colors()
             self._click_point_dragging = None
             return True
 
@@ -735,6 +735,7 @@ class DesignerSummaryScreen(Screen):
             # Mark session as modified
             self._session_modified = True
             self.session_modified = [True]
+            self._update_button_colors()
             # Find step index by step number instead of object identity
             # (object identity changes after DB reload)
             if self._current_step:
@@ -972,13 +973,32 @@ class DesignerSummaryScreen(Screen):
         if not self._session_modified or not self._steps:
             return
 
+        # Start saving animation on main thread
+        self.saving = True
+        self.save_progress = 0
+
+        # Launch saving in background thread
+        save_thread = threading.Thread(target=self._do_save, daemon=True)
+        save_thread.start()
+
+    def _do_save(self):
+        """Background thread: do the actual saving."""
+        if not self._session_modified or not self._steps:
+            self.saving = False
+            return
+
+        total_steps = len(self._modified_steps)
         logger.info("Saving modified steps...")
         import subprocess
         import tempfile
 
         # Recalculate OCR and ResNet for modified steps
+        step_count = 0
         for step in self._modified_steps:
             logger.debug(f"Processing step index {step.step_number}")
+            step_count += 1
+            if total_steps > 0:
+                self.save_progress = step_count / total_steps
 
             # Decode screenshot to temp file
             img_bytes = step.screenshot
@@ -1166,23 +1186,42 @@ class DesignerSummaryScreen(Screen):
             self._steps = db.get_steps(self._session_id)
             db.close()
 
-            # Find and restore the current step
+            # Find the current step to redraw later
+            current_step_to_redraw = None
             if current_step_number is not None:
                 for step in self._steps:
                     if step.step_number == current_step_number:
-                        self._current_step = step
-                        # Redraw the image with updated features
-                        self._show_step_image(step)
+                        current_step_to_redraw = step
                         break
-            else:
-                self._current_step = self._steps[0] if self._steps else None
+
+            # Reset modified state
+            self._session_modified = False
+            self.session_modified = [False]
+            self._modified_steps.clear()
         except Exception as e:
             logger.error(f"Error saving to database: {e}")
+            current_step_to_redraw = None
 
-        # Reset modified state
-        self._session_modified = False
-        self.session_modified = [False]
-        self._modified_steps.clear()
+        # Finish saving on main Kivy thread (includes UI updates)
+        Clock.schedule_once(lambda dt: self._finish_saving(current_step_to_redraw), 0)
+
+    def _finish_saving(self, current_step_to_redraw):
+        """Called on main Kivy thread to finish saving animation."""
+        # Redraw the current step with updated features
+        if current_step_to_redraw:
+            self._current_step = current_step_to_redraw
+            self._show_step_image(current_step_to_redraw)
+        else:
+            self._current_step = self._steps[0] if self._steps else None
+            if self._current_step:
+                self._show_step_image(self._current_step)
+
+        # Update button colors
+        self._update_button_colors()
+
+        # Stop saving animation
+        self.saving = False
+        self.save_progress = 0
 
     def go_back(self):
         """Navigate back to main screen."""

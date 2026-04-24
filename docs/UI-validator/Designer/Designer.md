@@ -1,61 +1,61 @@
-# UI-Validator Designer - Documentazione
+# UI-Validator Designer - Documentation
 
-## 1. Introduzione
+## 1. Introduction
 
-Il **Designer** è uno strumento per registrare sequenze di azioni UI (click, input, scroll, drag) su uno schermo. Durante la registrazione, cattura screenshot, genera BBox intelligenti usando edge detection, estrae testo con OCR (EasyOCR) e feature vector con ResNet18. Tutto viene salvato in un database SQLite per revisione e modifica successiva.
+**Designer** is a tool that records UI action sequences (clicks, text input, scrolling, dragging) on a screen. During recording, it captures screenshots, generates smart bounding boxes using edge detection, extracts text via OCR (EasyOCR), and extracts visual features using ResNet18. All data is saved to a SQLite database for review and editing.
 
-**Workflow principale**:
-- **Create Session** → Registra azioni con Mini UI
-- **Dati salvati** → DB + screenshot PNG
-- **Summary Screen** → Visualizza e modifica i dati
+**Main workflow**:
+- **Create Session** → Record actions with Mini UI overlay
+- **Data saved** → Database + PNG screenshots
+- **Summary Screen** → View and modify recorded data
 
 ---
 
-## 2. Pagine Disponibili
+## 2. Available Screens
 
 ### 2.1 Create Screen (`designer_create.py`)
 
-Schermata iniziale per creare una nuova registrazione.
+Initial screen for starting a new recording session.
 
-**Elementi**:
-- **Nome Sessione** (TextInput): Nome univoco per la sessione
-- **Cartella Output** (FileBrowser): Cartella dove salvare i dati
-- **Monitor Selezionato** (Spinner): Quale monitor usare per la registrazione
-- **Pulsante "Avvia Registrazione"**: Inizia la registrazione
+**Elements**:
+- **Session Name** (TextInput): Unique name for this session
+- **Output Folder** (FileBrowser): Where to save the data
+- **Monitor** (Spinner): Which monitor to record from
+- **Start Recording button**: Begins the recording
 
-**Flusso**:
-1. User inserisce dati
-2. Valida input (nome non vuoto, cartella esistente, monitor selezionato)
-3. Crea cartella progetto: `{output_folder}/{session_name}/`
-4. **Minimizza Kivy window** (SW_MINIMIZE)
-5. Lancia `main_designer.py` in subprocess con argomenti
-6. Background thread in attesa di `session_done.json`
-7. Quando subprocess finisce:
-   - Ripristina Kivy window (SW_RESTORE, SetForegroundWindow)
-   - Carica sessione nel Summary Screen
-   - Naviga a Summary Screen
+**Flow**:
+1. User enters session details
+2. Validates input (non-empty name, existing folder, monitor selected)
+3. Creates project folder: `{output_folder}/{session_name}/`
+4. **Minimizes Kivy window** (SW_MINIMIZE)
+5. Launches `main_designer.py` as a subprocess
+6. Background thread waits for `session_done.json` signal
+7. When subprocess finishes:
+   - Restores Kivy window (SW_RESTORE, SetForegroundWindow)
+   - Loads session in Summary Screen
+   - Navigates to Summary Screen
 
 ---
 
 ### 2.2 Open Screen (`designer_open.py`)
 
-Schermata per aprire una sessione esistente.
+Screen to open an existing recording session.
 
-**Elementi**:
-- **Cartella Designer** (FileBrowser): Cartella progetto
-- **Pulsante "Apri Registrazione"**: Carica la sessione
+**Elements**:
+- **Project Folder** (FileBrowser): The project folder to open
+- **Open Recording button**: Loads the session
 
-**Flusso**:
-1. User seleziona cartella progetto
-2. Valida che la cartella contiene un database
-3. Carica sessione dal DB
-4. Naviga a Summary Screen
+**Flow**:
+1. User selects a project folder
+2. Validates that folder contains a database
+3. Loads session from database
+4. Navigates to Summary Screen
 
 ---
 
 ### 2.3 Summary Screen (`designer_summary.py`)
 
-Schermata per visualizzare, modificare e salvare una sessione registrata.
+Screen for viewing, editing, and saving a recorded session.
 
 **Layout**:
 ```
@@ -74,320 +74,317 @@ Schermata per visualizzare, modificare e salvare una sessione registrata.
 └─────────────────┴──────────────────────────┘
 ```
 
-**Funzionalità**:
-- **Step list** (sinistra): Scorri e clicca per visualizzare uno step
-- **Screenshot** (destra): Image viewer con `fit_mode: "contain"` (responsive)
-- **BBox interattive**:
-  - Drag interior → sposta BBox
-  - Drag edge/corner → ridimensiona
-  - Hover → cursor diventa "hand"
-- **Metadata bar**: Mostra OCR text e ResNet features
+**Features**:
+- **Step list** (left): Scroll and click to view a step
+- **Screenshot** (right): Image viewer with `fit_mode: "contain"` (responsive)
+- **Interactive BBox**:
+  - Drag interior → move BBox
+  - Drag edge/corner → resize BBox
+  - Drag click dot → reposition where the click occurred
+  - Hover → cursor changes to "hand"
+- **Metadata bar**: Shows OCR text and ResNet features
   - **Single-action steps**: 1 BBox
-  - **DRAG_AND_DROP**: 2 BBox (start + end) con info per entrambe
-- **Save button**: Ricavola OCR/ResNet per BBox modificate, salva in DB
-  - Disabilitato se nessuna modifica
-  - Lancia worker process `_ocr_feature_update.py` per ogni BBox modificato
+  - **DRAG_AND_DROP**: 2 BBox (start + end) with info for both
+- **Save button**: Re-extracts OCR/ResNet for modified BBox, saves to database
+  - Disabled if no changes made
+  - Launches worker process `_ocr_feature_update.py` for each modified BBox
 
 ---
 
-## 3. Flusso Operativo quando Avvio Esecuzione - DETTAGLIATO
+## 3. Detailed Operational Flow - Recording Session
 
-### 3.1 User Usage - Mini UI Color, F9, ESC, Ctrl
+### 3.1 Mini UI Overlay - Controls and Indicators
 
 #### Mini UI Layout (Dark Theme, Bottom-Left)
 ```
 ● REC  Step 1     [F9]
 ```
-- Larghezza: 135px, Altezza: 28px
-- Posizionamento: Angolo inferiore sinistro dello schermo
-- Sempre in primo piano (topmost), semi-trasparente (alpha: 0.92)
+- Width: 135px, Height: 28px
+- Position: Bottom-left corner of screen
+- Always on top, semi-transparent (alpha: 0.92)
 
-#### Colori
-| Elemento   | Colore                     | Significato                       |
-|------------|----------------------------|-----------------------------------|
-| `●` Dot    | Arancione (#f39c12)        | Recording in progress             |
-| **REC**    | Testo bianco, sfondo rosso | Status label                      |
-| **Step N** | Testo grigio               | Numero del next step da catturare |
-| **[F9]**   | Arancione button           | Input finalizer button            |
+#### Color Indicators
+| Element    | Color                   | Meaning                             |
+|------------|-------------------------|------------------------------------|
+| `●` Dot    | Orange (#f39c12)        | Recording in progress               |
+| **REC**    | White text, red bg      | Status label (always visible)       |
+| **Step N** | Gray text               | Next step number to record          |
+| **[F9]**   | Orange button           | Input finalizer button              |
 
-#### Controls
-| Azione | Effetto |
+#### Keyboard Controls
+| Action | Effect |
 |--------|---------|
-| **ESC** | Termina registrazione, chiude Mini UI, scrive `session_done.json`, esce |
-| **F9** | Finalizza INPUT (quando in text field): chiama `_finalize_input_action()` |
-| **ENTER** | Aggiunge newline al testo (quando in INPUT): continua l'input |
-| **CTRL+C** | Fallback per terminare (se ESC non funziona) |
-| **Click mouse** | Cattura SINGLE_CLICK: genera BBox, OCR, ResNet |
-| **Double-Click** | Cattura DOUBLE_CLICK: stessa logica di SINGLE_CLICK |
-| **Right-Click** | Cattura RIGHT_CLICK: stessa logica di SINGLE_CLICK |
-| **Drag mouse** | Cattura DRAG_AND_DROP: 2 BBox (start + end) |
-| **Scroll mouse** | Cattura SCROLL: registra dx, dy |
-| **Keyboard type** | Cattura INPUT: F9 per finire, ENTER per andare a capo, ricava BBox dal buffer screenshot |
+| **ESC** | Stop recording, close Mini UI, write `session_done.json`, exit |
+| **F9** | Finalize INPUT (when in text field) |
+| **ENTER** | Add newline to text (during INPUT), continue typing |
+| **CTRL+C** | Alternative way to stop (if ESC doesn't work) |
+| **Mouse click** | Capture SINGLE_CLICK: generates BBox, extracts OCR and features |
+| **Double-click** | Capture DOUBLE_CLICK: same as single click |
+| **Right-click** | Capture RIGHT_CLICK: same as single click |
+| **Mouse drag** | Capture DRAG_AND_DROP: 2 BBox (start + end positions) |
+| **Mouse scroll** | Capture SCROLL: records dx, dy values |
+| **Type text** | Capture INPUT: press F9 to finish, ENTER for new line |
 
 #### Mini UI States
 
-1. **Rosso (Saving)** - Modelli OCR/ResNet in precaricamento, oppure step in salvataggio
-2. **Verde (Ready)** - Pronto a catturare azioni
-3. **Step N** - Numero aggiornato per ogni step completato
+1. **Red (Loading)** — Models (OCR/ResNet) are preloading or step is being saved
+2. **Green (Ready)** — Ready to capture actions
+3. **Step N** — Updated after each completed step
 
 ---
 
-### Dettagli Fase di Registrazione
+### Recording Phases - Detailed
 
-#### Fase 1: Inizializzazione
+#### Phase 1: Initialization
 
 ```
-1. User clicca "Avvia Registrazione" in Create Screen
-2. Valida input (nome, cartella, monitor)
-3. Crea cartella progetto: {output_folder}/{session_name}/
-4. Crea sottocartella: {project}/screenshots/
-5. Minimizza Kivy window (ShowWindow, SW_MINIMIZE)
-6. Lancia main_designer.py in subprocess:
+1. User clicks "Start Recording" in Create Screen
+2. Validates input (name, folder, monitor)
+3. Creates project folder: {output_folder}/{session_name}/
+4. Creates subfolder: {project}/screenshots/
+5. Minimizes Kivy window (ShowWindow, SW_MINIMIZE)
+6. Launches main_designer.py as subprocess:
    - main_designer.py session_name output_folder monitor_num
 ```
 
-**main_designer.py initialization**:
-```python
+**main_designer.py startup**:
+```
 1. Add project_root to sys.path
-2. DesignerApp.__init__(session_name, db_path, monitor_num)
+2. Initialize DesignerApp(session_name, db_path, monitor_num)
 3. app.start():
-   - Create DesignerSession in DB (ottiene session_id da autoincrement)
-   - Ottieni monitor info da mss (resolution, position)
-   - Setup logging con colored output
-   - Crea ScreenshotHandler
-   - Crea MiniUI (tkinter, dark theme)
-   - wait_for_screen_stability() - attende schermo stabile
-   - set_loading() - rosso UI
-   - Crea ActionCapture con global hooks
-   - start_recording() - mouse + keyboard listening
+   - Create DesignerSession in database (auto-generated session_id)
+   - Get monitor info from mss (resolution, position)
+   - Setup logging with colored output
+   - Create ScreenshotHandler
+   - Create MiniUI overlay (dark theme)
+   - wait_for_screen_stability() — wait for screen to settle
+   - set_loading() — show red status
+   - Create ActionCapture with global keyboard/mouse hooks
+   - start_recording() — begin listening for events
    - Preload models in background thread:
-     - OCRGenerator().extract(dummy_image)
-     - FeatureGenerator().extract(dummy_image)
-   - set_ready() - verde UI
-   - Entra in loop while not should_stop
-4. Quando user preme ESC:
-   - should_stop = True
-   - Esce dal loop
-   - _cleanup()
-   - Scrive session_done.json con session_id + db_path
-   - main_designer.py esce
+     - Load OCR model (EasyOCR)
+     - Load ResNet18 model
+   - set_ready() — show green status
+   - Enter loop: while not should_stop
+4. When user presses ESC:
+   - Set should_stop = True
+   - Exit loop
+   - Clean up resources
+   - Write session_done.json with session_id + db_path
+   - Exit main_designer.py
 ```
 
-#### Fase 2: Recording Loop
+#### Phase 2: Recording Loop
 
 ```
-while not should_stop:
-  - mini_ui.update()
-  - Aspetta mouse/keyboard events (global hooks)
-  - Quando evento rilevato:
-    - ActionCapture._on_mouse_event() / _on_key_event()
-    - Cattura coordinate/testo
+While recording is active:
+  - mini_ui.update() — update display
+  - Wait for mouse/keyboard events (global hooks)
+  - When event detected:
+    - ActionCapture._on_mouse_event() or _on_key_event()
+    - Capture coordinates/text
     - screenshot_handler.wait_for_screen_stability()
-    - Prende screenshot dal buffer
-    - Chiama on_action_callback
-  - Aggiorna Mini UI Step counter
-  - Attende stabilità prima del prossimo step
+    - Grab screenshot from buffer
+    - Call on_action_callback
+  - Update Mini UI step counter
+  - Wait for screen stability before next step
 ```
 
-#### Fase 3: Action Capture e Salvataggio
+#### Phase 3: Action Capture and Processing
 
-Quando un'azione viene catturata:
+When an action is captured:
 
 ```
 1. _on_action_captured(action_dict):
-   - Salva screenshot come PNG in {project}/screenshots/step_NNN.png
-   - Estrae BBox intelligente dalle coordinate click
-   - Estrae OCR text da BBox
-   - Estrae ResNet 512-dim features da BBox
+   - Save screenshot as PNG in {project}/screenshots/step_NNN.png
+   - Generate smart BBox from click coordinates
+   - Extract OCR text from BBox
+   - Extract ResNet 512-dimensional feature vector from BBox
    - _save_step_to_db():
-     - Crea DesignerStep object
-     - Salva nel DB
-   - Incrementa step_count
-   - Aggiorna Mini UI con nuovo numero step
-   - Attende stabilità schermo
+     - Create DesignerStep object
+     - Save to database
+   - Increment step counter
+   - Update Mini UI with new step number
+   - Wait for screen stability
 
-2. Per DRAG_AND_DROP:
-   - Cattura 2 coordinate (start + end)
-   - Genera 2 BBox (uno per start, uno per end)
-   - Estrae OCR + ResNet per entrambe
-   - Salva entrambe nel DB (drag_end_bbox, drag_end_ocr_text, drag_end_features)
+2. For DRAG_AND_DROP:
+   - Capture 2 coordinates (start + end)
+   - Generate 2 BBox (one for start, one for end)
+   - Extract OCR + ResNet for both
+   - Save both in database (drag_end_bbox, drag_end_ocr_text, drag_end_features)
 
-3. Per INPUT:
-   - Buffer screenshot è quello di PRIMA che l'utente inizi a digitare
-   - Utente digita testo (ENTER per andare a capo)
-   - User preme F9 per finalizzare
-   - Ricava BBox dal buffer screenshot
-   - Estrae OCR + ResNet da BBox
-   - Salva nel DB con input_text, bbox, ocr_text, features
+3. For INPUT (text):
+   - Screenshot taken BEFORE user starts typing
+   - User types text (press ENTER for new line)
+   - User presses F9 to finish
+   - Generate BBox from the initial screenshot
+   - Extract OCR + ResNet from BBox
+   - Save to database with input_text, bbox, ocr_text, features
 ```
 
-#### Fase 4: Terminazione
+#### Phase 4: Termination
 
 ```
 User presses ESC:
-1. ActionCapture.listener.stop()
-2. ActionCapture._cleanup()
-3. should_stop = True
+1. ActionCapture.listener.stop() — stop event listeners
+2. ActionCapture._cleanup() — release resources
+3. Set should_stop = True
 4. Main loop exits
 5. Write session_done.json:
    {
      "session_id": 1,
-     "db_path": "C:/.../{session_name}.db",
-     "monitor_info": {left, top, width, height}
+     "db_path": "C:/.../{session_name}.db"
    }
 6. main_designer.py exits
 ```
 
-**designer_create.py** (background thread):
+**designer_create.py (background thread)**:
 ```
-1. Aspetta proc.wait() (subprocess finito)
-2. Legge session_done.json
-3. Clock.schedule_once(_on_session_done, 0)  # Kivy thread-safe
+1. Wait for subprocess to finish (proc.wait())
+2. Read session_done.json
+3. Call Clock.schedule_once(_on_session_done, 0)  # Thread-safe Kivy call
 4. _on_session_done():
-   - ShowWindow(hwnd, SW_RESTORE)
-   - SetForegroundWindow(hwnd)
+   - Restore Kivy window (SW_RESTORE)
+   - Bring window to foreground (SetForegroundWindow)
    - summary.load_session(session_id, db_path)
-   - Navigate to "designer_summary"
+   - Navigate to "designer_summary" screen
 ```
 
 ---
 
-## 4. Flusso Operativo quando Sono in Summary Table
+## 4. Summary Screen Operations
 
-### Loading Sessione
+### Loading a Session
 
 ```
-1. designer_summary.load_session(session_id, db_path) è chiamato
-   - Salva session_id e db_path come attributi
-   - Setta _pending_load = True
+1. designer_summary.load_session(session_id, db_path) is called
+   - Stores session_id and db_path as attributes
+   - Sets _pending_load = True
 
-2. on_enter() è chiamato (Kivy lifecycle):
-   - Controlla _pending_load
-   - Clock.schedule_once(_populate, 0)  # Kivy thread-safe
+2. on_enter() is called (Kivy lifecycle event):
+   - Checks _pending_load
+   - Calls Clock.schedule_once(_populate, 0)  # Thread-safe
 
 3. _populate():
-   - Apre DesignerDatabase(db_path)
-   - db.get_session(session_id)
-   - db.get_steps(session_id)  # Ordered by step_number
-   - Chiude DB
-   - Setta session_label con info
-   - Chiama _build_step_list()
+   - Opens DesignerDatabase(db_path)
+   - Fetches session and all steps (ordered by step_number)
+   - Closes database connection
+   - Updates session label with info
+   - Calls _build_step_list()
 
 4. _build_step_list():
-   - Crea StepRow per ogni step
-   - Aggiunge alla ScrollView (left panel)
-   - Seleziona primo step automaticamente
+   - Creates StepRow for each step
+   - Adds to ScrollView (left panel)
+   - Automatically selects first step
 ```
 
-### Viewing Step
+### Viewing a Step
 
 ```
-1. User clicca su StepRow:
+1. User clicks on a StepRow:
    - _on_step_selected(row)
-   - Trova step nella lista usando step_number
-   - Log: "Step X bbox detected: (x,y,w,h)"
-   - _show_step_image(step)
+   - Finds step using step_number
+   - Calls _show_step_image(step)
 
 2. _show_step_image(step):
-   - Decodifica screenshot PNG bytes → numpy BGR
-   - Salva come self._current_screenshot_bgr
+   - Decodes screenshot PNG bytes → numpy BGR array
+   - Stores as self._current_screenshot_bgr
    - _draw_overlays(bgr, step):
-     - Legge bbox coordinate da JSON
-     - Disegna rettangolo (rosso per start, viola per end)
-     - Legge coordinate click da JSON
-     - Disegna cerchio al click point
-     - Ritorna annotated BGR
-   - Converte BGR → RGB
-   - Flip verticale (OpenCV y=top, Kivy y=bottom)
-   - Crea Kivy Texture
-   - Binda touch events per bbox interazione
+     - Reads BBox coordinates from JSON
+     - Draws rectangle (red for start, purple for end)
+     - Reads click coordinates from JSON
+     - Draws circle at click point
+     - Returns annotated BGR image
+   - Converts BGR → RGB
+   - Flips vertically (OpenCV y=top, Kivy y=bottom)
+   - Creates Kivy Texture for display
+   - Binds touch events for BBox interaction
    - _update_metadata(step):
-     - Mostra OCR text (primo 100 char)
-     - Mostra ResNet info (512-dim vector)
-     - Per DRAG_AND_DROP: mostra info di entrambe le BBox
+     - Shows OCR text (first 100 chars)
+     - Shows ResNet info (512-dimensional vector)
+     - For DRAG_AND_DROP: shows info for both BBox
 ```
 
-### Modifying BBox
+### Modifying BBox and Click Points
 
 ```
-1. User tocca BBox:
+1. User touches BBox or click dot:
    - _on_image_touch_down():
-     - Converte widget touch coord → image coord
-     - Cerca quale BBox è stato toccato
-     - Individua edge (move, corner, edge)
+     - Converts touch coordinates from widget space to image space
+     - Detects which BBox was touched (or click point within 20px)
+     - Identifies interaction type (move, resize corner, resize edge)
 
-2. User trascina:
+2. User drags:
    - _on_image_touch_move():
-     - Calcola delta da ultima posizione
+     - Calculates delta from last position
      - _apply_bbox_drag():
-       - Applica movimento/ridimensionamento
-       - Clamp per rimanere dentro immagine
-       - Aggiorna bbox coordinates
+       - Applies movement or resize
+       - Clamps to stay within image bounds
+       - Updates BBox coordinates
      - _redraw_image_with_modified_bbox():
-       - Disegna preview con bbox modificata
+       - Draws preview with modified BBox or click position
 
-3. User rilascia:
+3. User releases:
    - _on_image_touch_up():
-     - Finalizza drag
-     - Salva bbox modificata in step object
-     - Log: "Bbox N moved/resized: (x,y,w,h)"
-     - Marca step come modificato in _modified_steps
-     - Attiva Save button
-     - Ridisegna immagine con bbox finale
+     - Finalizes drag operation
+     - Saves modified BBox/click point to step object
+     - Marks step as modified in _modified_steps set
+     - Enables Save button
+     - Redraws image with final BBox
 ```
 
-### Saving Modified BBox
+### Saving Modified Steps
 
 ```
-1. User clicca Save:
+1. User clicks Save:
    - save_session():
-     - Per ogni step in _modified_steps:
-       - _process_input_action():
-         - Decodifica screenshot PNG
-         - Legge bbox JSON
-         - BBoxGenerator.crop_image() per croppare
-         - Lancia _ocr_feature_update.py in subprocess:
-           - ./src/app/core/designer/_ocr_feature_update.py
-           - Argomenti: screenshot_path bbox_json
+     - For each modified step in _modified_steps:
+       - _process_step():
+         - Decodes screenshot PNG
+         - Reads BBox JSON
+         - Crops image to BBox
+         - Launches _ocr_feature_update.py as subprocess:
+           - Path: ./src/app/core/designer/_ocr_feature_update.py
+           - Arguments: screenshot_path bbox_json
            - Output: {"ocr_text": "...", "features": "hex_string"}
-         - Riceve output JSON
-         - Converte hex → bytes
-         - Salva step.ocr_text, step.features
-       - Per DRAG_AND_DROP: processa anche drag_end_bbox
+         - Receives JSON output from process
+         - Converts hex string → bytes
+         - Saves step.ocr_text and step.features
+       - For DRAG_AND_DROP: also processes drag_end_bbox
 
-2. Dopo tutti i worker process finiti:
-   - Apre DB connection
-   - db.update_step(session_id, step) per ogni step
-   - Ricarica steps da DB:
-     - Ricorda step_number dello step corrente
-     - Ricarica tutti gli steps
-     - Trova step con stesso step_number
-     - _show_step_image() per ridisegnare con dati aggiornati
-   - Resetta _modified_steps
-   - Disabilita Save button
+2. After all worker processes finish:
+   - Opens database connection
+   - Calls db.update_step(session_id, step) for each modified step
+   - Reloads steps from database:
+     - Remembers current step_number
+     - Fetches all fresh steps
+     - Finds step with same step_number
+     - Calls _show_step_image() to redraw with updated data
+   - Clears _modified_steps set
+   - Disables Save button
 ```
 
-### Navigating Back
+### Going Back
 
 ```
-User clicca "< Back":
+User clicks "< Back":
   - go_back():
-    - _clear_image()
-    - Navigate to "main" screen
-    - manager.transition.direction = "right"
+    - Clears image display
+    - Navigates to "main" screen
+    - Uses right transition direction
 ```
 
 ---
 
-## 5. DB (Database)
+## 5. Database
 
-**Tipo**: SQLite  
-**Percorso**: `{project_folder}/{session_name}.db`  
-**Auto-creazione**: Prima volta che DesignerDatabase() è inizializzato
+**Type**: SQLite  
+**Location**: `{project_folder}/{session_name}.db`  
+**Auto-creation**: Created automatically on first use
 
-### Schema
+### Tables
 
-**Tabella: designer_session**
+**Table: designer_session**
 ```sql
 CREATE TABLE designer_session (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -396,89 +393,106 @@ CREATE TABLE designer_session (
 )
 ```
 
-**Tabella: designer_step**
+**Table: designer_step**
 ```sql
 CREATE TABLE designer_step (
   id                      INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id              INTEGER NOT NULL FOREIGN KEY REFERENCES designer_session(id),
   step_number             INTEGER NOT NULL,
-  action_type             TEXT NOT NULL,  -- SINGLE_CLICK, DOUBLE_CLICK, RIGHT_CLICK, SCROLL, INPUT, DRAG_AND_DROP
+  action_type             TEXT NOT NULL,
+  -- Types: SINGLE_CLICK, DOUBLE_CLICK, RIGHT_CLICK, SCROLL, INPUT, DRAG_AND_DROP
   
-  -- Screenshot and coordinates
-  screenshot              BLOB,  -- PNG bytes
-  screenshot_path         TEXT,  -- File path
-  coordinates             TEXT,  -- JSON {"x": int, "y": int}
+  -- Screenshot and click location
+  screenshot              BLOB,              -- PNG image bytes
+  screenshot_path         TEXT,              -- File path to PNG
+  coordinates             TEXT,              -- JSON: {"x": int, "y": int}
   
-  -- Main BBox and extraction
-  bbox                    TEXT,  -- JSON {"x": int, "y": int, "w": int, "h": int}
-  ocr_text                TEXT,  -- Extracted text
-  features                BLOB,  -- ResNet18 512-dim vector as bytes
+  -- Main BBox and AI extraction
+  bbox                    TEXT,              -- JSON: {"x": int, "y": int, "w": int, "h": int}
+  ocr_text                TEXT,              -- Extracted text from BBox
+  features                BLOB,              -- ResNet18 512-dim vector (2048 bytes)
   
-  -- Action-specific
-  input_text              TEXT,  -- For INPUT action
+  -- For INPUT action
+  input_text              TEXT,              -- Text that was typed
   press_enter_after       BOOLEAN DEFAULT FALSE,
   
   -- For SCROLL action
-  scroll_dx               INTEGER,
-  scroll_dy               INTEGER,
+  scroll_dx               INTEGER,           -- Horizontal scroll amount
+  scroll_dy               INTEGER,           -- Vertical scroll amount
   
-  -- For DRAG_AND_DROP action (second BBox)
-  drag_end_coordinates    TEXT,  -- JSON {"x": int, "y": int}
-  drag_end_bbox           TEXT,  -- JSON {"x": int, "y": int, "w": int, "h": int}
-  drag_end_ocr_text       TEXT,  -- Extracted text from drag_end BBox
-  drag_end_features       BLOB,  -- ResNet18 512-dim vector for drag_end BBox
+  -- For DRAG_AND_DROP action (end position)
+  drag_end_coordinates    TEXT,              -- JSON: {"x": int, "y": int}
+  drag_end_bbox           TEXT,              -- JSON: {"x": int, "y": int, "w": int, "h": int}
+  drag_end_ocr_text       TEXT,              -- Extracted text from end position BBox
+  drag_end_features       BLOB,              -- ResNet18 512-dim vector for end position
   
   created_at              DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 ```
 
-### Operazioni
+### Operations
 
-**Da main_designer.py**:
-- `db.create_session(name)` → crea DesignerSession, ritorna session object con ID
-- `db.add_step(session_id, step)` → inserisce nuovo DesignerStep
+**From main_designer.py**:
+- `db.create_session(name)` → creates DesignerSession, returns object with auto-generated ID
+- `db.add_step(session_id, step)` → inserts new DesignerStep
 
-**Da designer_summary.py**:
-- `db.get_session(session_id)` → ritorna DesignerSession object
-- `db.get_steps(session_id)` → ritorna lista di DesignerStep ordinati per step_number
-- `db.update_step(session_id, step)` → aggiorna step esistente nel DB
-- `db.close()` → dispone connection pool
+**From designer_summary.py**:
+- `db.get_session(session_id)` → fetches DesignerSession object
+- `db.get_steps(session_id)` → fetches all steps ordered by step_number
+- `db.update_step(session_id, step)` → updates existing step in database
+- `db.close()` → closes database connection
 
 ---
 
-## 6. Modelli Utilizzati
+## 6. Models Used
 
-### 6.1 BBox (Bounding Box Generator)
+### 6.1 BBox (Smart Bounding Box Generator)
 
 **File**: `_bbox_generator.py`  
-**Classe**: `BBoxGenerator`  
-**Metodo**: `generate_smart_bbox(screenshot, click_x, click_y)`
+**Class**: `BBoxGenerator`  
+**Method**: `generate_smart_bbox(screenshot, click_x, click_y)`
 
-#### Algoritmo (Multi-method approach)
+#### Core Rules
 
-```python
-1. Canny Edge Detection (ultra-sensibile):
-   - threshold1 = 5, threshold2 = 30
-   - Morphological close + dilate
+BBox generation follows two key principles:
+1. **Always contains the click point** — The generated box must include the exact pixel where the user clicked
+2. **Smallest possible box** — Among all valid boxes, select the one with minimum area
+
+#### Algorithm (Multi-method approach)
+
+The generator combines multiple edge detection techniques to find the best bounding box:
+
+```
+1. Canny Edge Detection (sensitive):
+   - Thresholds: low=5, high=30
+   - Dilates results to connect nearby edges
 
 2. Adaptive Thresholding:
-   - GAUSSIAN_C, kernel 15x15
-   - Dilate
+   - Detects edges based on local contrast
+   - Kernel size: 15x15
+   - Dilates results
 
-3. Multiple Binary Thresholds:
-   - Dark areas (threshold 100)
-   - Light areas (threshold 150 inverted)
-   - Combina con bitwise_or
+3. Binary Thresholding:
+   - Captures dark areas (dark pixels < 100)
+   - Captures light areas (light pixels > 150)
+   - Combines both
 
-4. Contour Finding:
-   - Trova contours da tutti i metodi
-   - Filtra per contour vicino al click point (euclidean distance)
-   - Seleziona più grande contour nell'area
+4. Contour Selection:
+   - Finds all contours from combined edge detection
+   - Filters: only contours that CONTAIN the click point
+   - Filters: size between 5px and 1000px
+   - Filters: shape regularity (at least 30% of area filled)
+   - Selects: the SMALLEST contour (minimum area)
 
-5. Output BBox:
-   - min_size = 5px
-   - max_size = 1000px
-   - Ritorna {"x": int, "y": int, "w": int, "h": int}
+5. Fallback (if no contour contains click):
+   - Uses corner detection (Harris corners)
+   - Finds nearby corners within 60px
+   - Builds box around them with 3px padding
+   - If no corners: draws 25px square centered on click
+
+6. Sanity Check:
+   - Verifies click is inside final box
+   - If not, expands box by ±10px around click
 ```
 
 #### Output Format
@@ -486,137 +500,124 @@ CREATE TABLE designer_step (
 {
   "x": 100,      // Top-left X coordinate
   "y": 200,      // Top-left Y coordinate
-  "w": 150,      // Width
-  "h": 80        // Height
+  "w": 150,      // Width in pixels
+  "h": 80        // Height in pixels
 }
 ```
 
-#### Salvataggio
-- Serializzato come JSON string nel campo `bbox` del DB
-- Per DRAG_AND_DROP: 2 BBox in `bbox` e `drag_end_bbox`
-
-
-TOOD: MIGLIORARE LA RILEVAZIONE DELLE BBOX
+#### Storage
+- Serialized as JSON string in database `bbox` field
+- For DRAG_AND_DROP: 2 boxes stored in `bbox` and `drag_end_bbox`
 
 ---
-
 
 ### 6.2 OCR (Optical Character Recognition)
 
 **File**: `_ocr_generator.py`  
-**Classe**: `OCRGenerator`  
-**Metodo**: `extract(bbox_image)`
+**Class**: `OCRGenerator`  
+**Method**: `extract(bbox_image)`
 
-#### Modello: EasyOCR
+#### Model: EasyOCR
 
-**Configurazione**:
-- Language: `['en']` (English only)
-- GPU: `False` (CPU processing)
-- Lazy initialization (first call preloads model)
+**Configuration**:
+- Language: English only
+- Processing: CPU (GPU not required)
+- Loading: Lazy initialization (first call loads the model)
 
-#### Algoritmo
+#### How It Works
 
-```python
-1. Lazy load EasyOCR Reader (first call):
-   easyocr.Reader(['en'], gpu=False)
+```
+1. First time you extract text from a BBox:
+   - Load EasyOCR English model (~50MB)
+   - Takes 2-3 seconds
 
-2. readtext(bbox_image):
-   - Ritorna lista di tuples: [(text, confidence), ...]
-   - Estrae tutti i testi
+2. For each BBox:
+   - Crop image region using BBox
+   - Run OCR reader on cropped image
+   - Extract all detected text
 
-3. Join testi con spazio
-4. Strip whitespace
-5. Ritorna string (empty string se nessun testo)
+3. Post-process:
+   - Join all text pieces with spaces
+   - Remove leading/trailing whitespace
+   - Return as plain string
+
+4. If no text detected:
+   - Return empty string
 ```
 
 #### Output Format
-```python
-"Extracted text from BBox"  # Plain string
+```
+"Extracted text from BBox"
 ```
 
-#### Salvataggio
-- Serializzato direttamente nel campo `ocr_text` del DB
-- Max 255 chars (dipende da TEXT column type)
-- Per DRAG_AND_DROP: 2 OCR in `ocr_text` e `drag_end_ocr_text`
+#### Storage
+- Saved as plain text in database `ocr_text` field
+- For DRAG_AND_DROP: text stored in `ocr_text` and `drag_end_ocr_text`
 
-#### Performance
-- Primo load: ~2-3 secondi (preload in background thread)
-- Successivi: ~0.5-1 secondo per BBox
+#### Speed
+- First call: ~2-3 seconds (model loads)
+- Subsequent calls: ~0.5-1 second per BBox
 
 ---
 
-### 6.3 ResNet (Residual Network Features)
+### 6.3 ResNet (Neural Network Features)
 
 **File**: `_feature_generator.py`  
-**Classe**: `FeatureGenerator`  
-**Metodo**: `extract(bbox_image)`
+**Class**: `FeatureGenerator`  
+**Method**: `extract(bbox_image)`
 
-#### Modello: ResNet18 Pretrained
+#### Model: ResNet18 (ImageNet Pretrained)
 
-**Configurazione**:
-- Base: ResNet18 (torchvision.models.resnet18)
-- Pretrained: True (ImageNet weights)
-- Devices: GPU se disponibile, altrimenti CPU
-- Lazy initialization (first call preloads model)
+**Configuration**:
+- Architecture: ResNet18 deep neural network
+- Training: Pretrained on ImageNet (1000 object categories)
+- Processing: GPU if available, otherwise CPU
+- Loading: Lazy initialization (first call loads the model)
 
-#### Architettura
+#### How It Works
 
 ```
-ResNet18 (pretrained su ImageNet)
-  ├─ Layer 1-4: Feature extraction
-  └─ Rimuovi final classification layer
-  → Global Average Pooling
-  → 512-dim feature vector
-```
+1. First time you extract features from a BBox:
+   - Load ResNet18 model (~40MB)
+   - Takes 5-10 seconds
 
-#### Algoritmo
+2. For each BBox:
+   - Resize image to 256×256 pixels
+   - Crop center 224×224 region
+   - Convert BGR → RGB
+   - Normalize using ImageNet statistics
+   
+3. Neural Network Processing:
+   - Pass through ResNet layers
+   - Remove final classification layer
+   - Apply global average pooling
+   - Output: 512-dimensional vector
 
-```python
-1. Lazy load ResNet18:
-   - models.resnet18(pretrained=True)
-   - Remove final FC layer (classification)
-   - nn.Sequential(*children[:-1])
-   - model.eval() (inference mode)
-   - GPU se disponibile
-
-2. Preprocessing:
-   - np.ndarray BGR → PIL.Image RGB
-   - Resize(256) → CenterCrop(224)
-   - ToTensor()
-   - Normalize(ImageNet mean/std)
-   - batch_size=1
-
-3. Forward pass:
-   - model(tensor) → output
-   - Output shape: (1, 512) dopo global avg pool
-
-4. Output:
-   - Detach + CPU + numpy
-   - Shape: (512,)
-   - dtype: float32
-
-5. Ritorna numpy.ndarray (512,)
+4. Return:
+   - Floating point array (512 values)
+   - Each value is 0.0 to 1.0+ range
+   - Represents visual features (edges, textures, shapes, etc.)
 ```
 
 #### Output Format
-```python
-numpy.ndarray, dtype=float32, shape=(512,)
-# Serializzato come bytes nel DB:
-array.astype(np.float32).tobytes()  # 2048 bytes
+```
+512-dimensional float vector stored as 2048 bytes (binary)
 ```
 
-#### Salvataggio
-- Salvato come BLOB nel campo `features` del DB
-- In _ocr_feature_update.py: convertito a hex string per JSON
-- In DB storage: convertito da hex back to bytes
-- Per DRAG_AND_DROP: 2 features in `features` e `drag_end_features`
+Serialized in database as:
+- BLOB format (binary data)
+- Converted to hex string for JSON transport
 
-#### Performance
-- Primo load: ~5-10 secondi (preload in background thread)
-- Successivi: ~0.2-0.5 secondi per BBox
-- GPU: ~5x più veloce
+#### Storage
+- Saved as binary blob in database `features` field
+- For DRAG_AND_DROP: vectors stored in `features` and `drag_end_features`
 
-#### Utilizzo
-- **Matching**: Confronta similarity tra elementi visualmente simili
-- **Clustering**: Raggruppa elementi per feature similarity
-- **Search**: Find visually similar elements in session
+#### Speed
+- First call: ~5-10 seconds (model loads)
+- Subsequent calls: ~0.2-0.5 seconds per BBox
+- GPU accelerated: ~5x faster than CPU
+
+#### Uses
+- **Visual Matching**: Find similar UI elements
+- **Clustering**: Group similar elements together
+- **Search**: Find visually related steps in session
