@@ -29,26 +29,11 @@ class DesignerOpenScreen(Screen):
     _error_msg = StringProperty("")
 
     def on_enter(self):
-        self._refresh_monitors()
+        pass
 
     def go_back(self):
         self.manager.transition.direction = "right"
         self.manager.current = "main"
-
-    def _refresh_monitors(self):
-        try:
-            from mss import mss
-            with mss() as sct:
-                monitors = sct.monitors[1:]
-                spinner = self.ids.monitor_spinner
-                spinner.values = [
-                    f"Monitor {i + 1}  ({m['width']}×{m['height']})"
-                    for i, m in enumerate(monitors)
-                ]
-                if spinner.values:
-                    spinner.text = spinner.values[0]
-        except Exception:
-            pass
 
     def browse_designer_folder(self):
         from tkinter import filedialog, Tk
