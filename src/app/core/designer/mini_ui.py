@@ -52,8 +52,8 @@ class MiniUI:
         self.window.attributes('-alpha', 0.92)
         self.window.configure(bg=_BG)
 
-        # Posizionamento: bottom-left angolo con offset minimo
-        w, h = 180, 28
+        # Posizionamento: bottom-left angolo, attaccato al bordo
+        w, h = 135, 28
         if self.monitor_info:
             x = self.monitor_info['left']
             y = self.monitor_info['top'] + self.monitor_info['height'] - h
@@ -63,7 +63,7 @@ class MiniUI:
 
         # Single row with all elements
         main_row = tk.Frame(self.window, bg=_BG)
-        main_row.pack(fill="both", padx=2, pady=0)
+        main_row.pack(fill="both", padx=1, pady=0)
 
         # All elements on same row
         tk.Label(main_row, text="●", fg=_ORANGE, bg=_BG,
@@ -77,8 +77,8 @@ class MiniUI:
         tk.Label(main_row, textvariable=self.step_var, fg=_FG, bg=_BG,
                  font=("Segoe UI", 8)).pack(side="left", padx=(2, 0))
 
-        # Spacer
-        tk.Label(main_row, text="", bg=_BG, width=4).pack(side="left")
+        # Spacer between step and F9
+        tk.Label(main_row, text="", bg=_BG, width=3).pack(side="left")
 
         # F9 button
         self.f9_button = tk.Button(

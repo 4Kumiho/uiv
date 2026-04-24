@@ -33,7 +33,7 @@ class DesignerApp:
         self.session = None
         self.action_capture = None
         self.mini_ui = None
-        self.step_count = 0
+        self.step_count = 1
         self.should_stop = False
         self.monitor_num = monitor_num
         self.monitor_info = None
@@ -216,9 +216,6 @@ class DesignerApp:
         self._set_ui_red()
 
         try:
-            self.step_count += 1
-            self.mini_ui.set_step(self.step_count)
-
             # Salva screenshot
             screenshot = action_dict.get('screenshot')
             screenshot_data, screenshot_path = self._save_screenshot(screenshot)
@@ -239,8 +236,12 @@ class DesignerApp:
             else:
                 result = {}
 
-            # Salva nel DB
+            # Salva nel DB (con il numero corrente)
             self._save_step_to_db(action_dict, action_type, screenshot_data, screenshot_path, result)
+
+            # Dopo salvataggio, incrementa per il prossimo step
+            self.step_count += 1
+            self.mini_ui.set_step(self.step_count)
 
         except Exception as e:
             self.logger.error(f"Error saving action: {e}")
