@@ -98,6 +98,7 @@ class DesignerSummaryScreen(Screen):
         self._bbox_dragging = None
         self._bbox_dragging_is_drag_end = False  # Track which bbox is being dragged
         self._drag_edge_type = None
+        self._click_point_dragging = None  # Track if dragging a click point
         self._last_touch_pos = None
 
         # Initialize OCR and ResNet generators
@@ -235,6 +236,7 @@ class DesignerSummaryScreen(Screen):
         self._current_screenshot_bgr = bgr.copy()
         self._current_step = step
         self._bbox_dragging = None
+        self._click_point_dragging = None
         self._drag_edge_type = None
 
         # Draw overlays
@@ -548,9 +550,37 @@ class DesignerSummaryScreen(Screen):
         # Convert touch position to image coordinates (accounting for fit_mode: contain)
         img_x, img_y = self._widget_to_image_coords(touch.x, touch.y, widget)
 
-        # Check both bboxes and select the closest one
+        # Check both bboxes and click points, select the closest one
         best_match = None
         best_distance = float('inf')
+
+        # Check main click point
+        if self._current_step.coordinates:
+            try:
+                coords = json.loads(self._current_step.coordinates)
+                if coords and 'x' in coords and 'y' in coords:
+                    click_x, click_y = coords['x'], coords['y']
+                    distance = ((img_x - click_x) ** 2 + (img_y - click_y) ** 2) ** 0.5
+                    if distance < 20:  # 20 pixel tolerance for click point
+                        if distance < best_distance:
+                            best_distance = distance
+                            best_match = ('click_point', False, None)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # Check drag_end click point
+        if self._current_step.drag_end_coordinates:
+            try:
+                coords = json.loads(self._current_step.drag_end_coordinates)
+                if coords and 'x' in coords and 'y' in coords:
+                    click_x, click_y = coords['x'], coords['y']
+                    distance = ((img_x - click_x) ** 2 + (img_y - click_y) ** 2) ** 0.5
+                    if distance < 20:  # 20 pixel tolerance for click point
+                        if distance < best_distance:
+                            best_distance = distance
+                            best_match = ('click_point', True, None)
+            except (json.JSONDecodeError, TypeError):
+                pass
 
         # Check main bbox
         if self._current_step.bbox:
@@ -584,12 +614,18 @@ class DesignerSummaryScreen(Screen):
 
         # Use the closest match
         if best_match:
-            bbox, is_drag_end, edge_type = best_match
-            self._bbox_dragging = bbox
-            self._bbox_dragging_is_drag_end = is_drag_end
-            self._drag_edge_type = edge_type
-            self._last_touch_pos = touch.pos
-            return True
+            match_type, is_drag_end, edge_type = best_match
+            if match_type == 'click_point':
+                self._click_point_dragging = is_drag_end
+                self._last_touch_pos = touch.pos
+                return True
+            else:
+                bbox = best_match[0]
+                self._bbox_dragging = bbox
+                self._bbox_dragging_is_drag_end = is_drag_end
+                self._drag_edge_type = edge_type
+                self._last_touch_pos = touch.pos
+                return True
 
         return False
 
@@ -626,8 +662,8 @@ class DesignerSummaryScreen(Screen):
             return ((img_x - cx) ** 2 + (img_y - cy) ** 2) ** 0.5
 
     def _on_image_touch_move(self, widget, touch):
-        """Handle touch move - drag bbox."""
-        if not self._bbox_dragging or not self._last_touch_pos:
+        """Handle touch move - drag bbox or click point."""
+        if not self._last_touch_pos:
             return False
 
         if self._current_screenshot_bgr is None:
@@ -637,17 +673,52 @@ class DesignerSummaryScreen(Screen):
         curr_img_x, curr_img_y = self._widget_to_image_coords(touch.x, touch.y, widget)
         prev_img_x, prev_img_y = self._widget_to_image_coords(self._last_touch_pos[0], self._last_touch_pos[1], widget)
 
-        dx = curr_img_x - prev_img_x
-        dy = curr_img_y - prev_img_y
+        # Handle click point drag
+        if hasattr(self, '_click_point_dragging') and self._click_point_dragging is not None:
+            if self._current_step:
+                # Clamp to image bounds
+                curr_img_x = max(0, min(curr_img_x, self._current_screenshot_bgr.shape[1]))
+                curr_img_y = max(0, min(curr_img_y, self._current_screenshot_bgr.shape[0]))
 
-        # Apply drag to bbox
-        self._apply_bbox_drag(dx, dy, widget)
-        self._last_touch_pos = touch.pos
-        self._redraw_image_with_modified_bbox()
-        return True
+                if self._click_point_dragging:
+                    # Drag end click point
+                    coords = json.loads(self._current_step.drag_end_coordinates) if self._current_step.drag_end_coordinates else {}
+                    coords['x'] = int(curr_img_x)
+                    coords['y'] = int(curr_img_y)
+                    self._current_step.drag_end_coordinates = json.dumps(coords)
+                else:
+                    # Drag main click point
+                    coords = json.loads(self._current_step.coordinates) if self._current_step.coordinates else {}
+                    coords['x'] = int(curr_img_x)
+                    coords['y'] = int(curr_img_y)
+                    self._current_step.coordinates = json.dumps(coords)
+
+                self._redraw_image_with_modified_bbox()
+                self._last_touch_pos = touch.pos
+                return True
+
+        # Handle bbox drag
+        if self._bbox_dragging and not self._last_touch_pos:
+            return False
+
+        if self._bbox_dragging:
+            dx = curr_img_x - prev_img_x
+            dy = curr_img_y - prev_img_y
+            self._apply_bbox_drag(dx, dy, widget)
+            self._last_touch_pos = touch.pos
+            self._redraw_image_with_modified_bbox()
+            return True
+
+        return False
 
     def _on_image_touch_up(self, widget, touch):
         """Handle touch up - finalize drag."""
+        # Finalize click point drag
+        if hasattr(self, '_click_point_dragging') and self._click_point_dragging is not None and self._current_step:
+            self._modified_steps.add(self._current_step)
+            self._click_point_dragging = None
+            return True
+
         # Save the modified bbox back to current_step
         if self._bbox_dragging and self._current_step:
             bbox = self._bbox_dragging
@@ -667,13 +738,11 @@ class DesignerSummaryScreen(Screen):
             # Find step index by step number instead of object identity
             # (object identity changes after DB reload)
             if self._current_step:
-                for i, step in enumerate(self._steps):
-                    if step.step_number == self._current_step.step_number:
-                        self._modified_steps.add(i)
-                        break
+                self._modified_steps.add(self._current_step)
 
         self._bbox_dragging = None
         self._bbox_dragging_is_drag_end = False
+        self._click_point_dragging = None
         self._drag_edge_type = None
         self._last_touch_pos = None
 
@@ -908,12 +977,8 @@ class DesignerSummaryScreen(Screen):
         import tempfile
 
         # Recalculate OCR and ResNet for modified steps
-        for step_idx in self._modified_steps:
-            logger.debug(f"Processing step index {step_idx}")
-            if step_idx >= len(self._steps):
-                continue
-
-            step = self._steps[step_idx]
+        for step in self._modified_steps:
+            logger.debug(f"Processing step index {step.step_number}")
 
             # Decode screenshot to temp file
             img_bytes = step.screenshot
