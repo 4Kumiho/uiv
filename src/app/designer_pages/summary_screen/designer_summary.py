@@ -334,11 +334,11 @@ class DesignerSummaryScreen(Screen):
     def _on_image_touch_down(self, widget, touch):
         """Handle touch down on image - detect if clicking on a bbox."""
         if not self._current_step or self._current_screenshot_bgr is None:
-            return
+            return False
 
         # Check if touch is within image bounds
         if not widget.collide_point(*touch.pos):
-            return
+            return False
 
         # Parse bbox from current step
         bbox = None
@@ -349,10 +349,23 @@ class DesignerSummaryScreen(Screen):
                 pass
 
         if not bbox:
-            return
+            return False
+
+        # Convert touch position from screen to image coordinates
+        img_h, img_w = self._current_screenshot_bgr.shape[:2]
+        if widget.width <= 0 or widget.height <= 0:
+            return False
+
+        scale_x = img_w / widget.width
+        scale_y = img_h / widget.height
+
+        local_x = touch.x - widget.x
+        local_y = touch.y - widget.y
+        img_x = local_x * scale_x
+        img_y = img_h - (local_y * scale_y)  # Invert Y because Kivy flipped the image
 
         # Detect which part of bbox is being clicked
-        edge_type = self._detect_bbox_edge(touch.pos, widget, bbox)
+        edge_type = self._detect_bbox_edge(img_x, img_y, bbox)
         if edge_type:
             self._bbox_dragging = bbox
             self._drag_edge_type = edge_type
@@ -366,9 +379,16 @@ class DesignerSummaryScreen(Screen):
         if not self._bbox_dragging or not self._last_touch_pos:
             return False
 
-        # Calculate delta
-        dx = touch.x - self._last_touch_pos[0]
-        dy = touch.y - self._last_touch_pos[1]
+        if self._current_screenshot_bgr is None or widget.width <= 0 or widget.height <= 0:
+            return False
+
+        # Calculate delta in image coordinates
+        img_h, img_w = self._current_screenshot_bgr.shape[:2]
+        scale_x = img_w / widget.width
+        scale_y = img_h / widget.height
+
+        dx = (touch.x - self._last_touch_pos[0]) * scale_x
+        dy = -(touch.y - self._last_touch_pos[1]) * scale_y  # Invert Y
 
         # Apply drag to bbox
         self._apply_bbox_drag(dx, dy, widget)
@@ -383,22 +403,34 @@ class DesignerSummaryScreen(Screen):
         self._last_touch_pos = None
         return False
 
-    def _detect_bbox_edge(self, touch_pos, widget, bbox):
+    def _detect_bbox_edge(self, img_x, img_y, bbox):
         """Detect which edge/corner of bbox is being touched."""
-        threshold = 15  # pixel threshold for edge detection
+        threshold = 10  # pixel threshold for edge detection
 
-        # Convert image coordinates to touch position (approximation)
-        # This is a simplified version - ideally we'd use the texture's position
         x, y, w, h = bbox['x'], bbox['y'], bbox['w'], bbox['h']
 
-        # Check if near center (move)
-        if (x + w/2 - threshold <= touch_pos[0] <= x + w/2 + threshold and
-            y + h/2 - threshold <= touch_pos[1] <= y + h/2 + threshold):
-            return 'move'
+        # Check corners first
+        if abs(img_x - x) < threshold and abs(img_y - y) < threshold:
+            return 'tl'  # top-left
+        if abs(img_x - (x + w)) < threshold and abs(img_y - y) < threshold:
+            return 'tr'  # top-right
+        if abs(img_x - x) < threshold and abs(img_y - (y + h)) < threshold:
+            return 'bl'  # bottom-left
+        if abs(img_x - (x + w)) < threshold and abs(img_y - (y + h)) < threshold:
+            return 'br'  # bottom-right
 
-        # Check corners and edges
-        # For now, simplified - just detect if within bbox area
-        if x <= touch_pos[0] <= x + w and y <= touch_pos[1] <= y + h:
+        # Check edges
+        if abs(img_x - x) < threshold and y <= img_y <= y + h:
+            return 'l'  # left
+        if abs(img_x - (x + w)) < threshold and y <= img_y <= y + h:
+            return 'r'  # right
+        if abs(img_y - y) < threshold and x <= img_x <= x + w:
+            return 't'  # top
+        if abs(img_y - (y + h)) < threshold and x <= img_x <= x + w:
+            return 'b'  # bottom
+
+        # Check if within bbox (move)
+        if x <= img_x <= x + w and y <= img_y <= y + h:
             return 'move'
 
         return None
@@ -412,6 +444,38 @@ class DesignerSummaryScreen(Screen):
         if self._drag_edge_type == 'move':
             bbox['x'] += int(dx)
             bbox['y'] += int(dy)
+        elif self._drag_edge_type == 'tl':
+            bbox['x'] += int(dx)
+            bbox['y'] += int(dy)
+            bbox['w'] -= int(dx)
+            bbox['h'] -= int(dy)
+        elif self._drag_edge_type == 'tr':
+            bbox['y'] += int(dy)
+            bbox['w'] += int(dx)
+            bbox['h'] -= int(dy)
+        elif self._drag_edge_type == 'bl':
+            bbox['x'] += int(dx)
+            bbox['w'] -= int(dx)
+            bbox['h'] += int(dy)
+        elif self._drag_edge_type == 'br':
+            bbox['w'] += int(dx)
+            bbox['h'] += int(dy)
+        elif self._drag_edge_type == 'l':
+            bbox['x'] += int(dx)
+            bbox['w'] -= int(dx)
+        elif self._drag_edge_type == 'r':
+            bbox['w'] += int(dx)
+        elif self._drag_edge_type == 't':
+            bbox['y'] += int(dy)
+            bbox['h'] -= int(dy)
+        elif self._drag_edge_type == 'b':
+            bbox['h'] += int(dy)
+
+        # Clamp to minimum size
+        if bbox['w'] < 10:
+            bbox['w'] = 10
+        if bbox['h'] < 10:
+            bbox['h'] = 10
 
     def _redraw_image_with_modified_bbox(self):
         """Redraw the image with the modified bbox."""
