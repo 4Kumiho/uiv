@@ -114,16 +114,15 @@ Schermata per visualizzare, modificare e salvare una sessione registrata.
 | Azione | Effetto |
 |--------|---------|
 | **ESC** | Termina registrazione, chiude Mini UI, scrive `session_done.json`, esce |
-| **F9 / ENTER** | Finalizza INPUT (quando in text field): chiama `_finalize_input_action()` |
+| **F9** | Finalizza INPUT (quando in text field): chiama `_finalize_input_action()` |
+| **ENTER** | Aggiunge newline al testo (quando in INPUT): continua l'input |
 | **CTRL+C** | Fallback per terminare (se ESC non funziona) |
 | **Click mouse** | Cattura SINGLE_CLICK: genera BBox, OCR, ResNet |
 | **Double-Click** | Cattura DOUBLE_CLICK: stessa logica di SINGLE_CLICK |
 | **Right-Click** | Cattura RIGHT_CLICK: stessa logica di SINGLE_CLICK |
 | **Drag mouse** | Cattura DRAG_AND_DROP: 2 BBox (start + end) |
 | **Scroll mouse** | Cattura SCROLL: registra dx, dy |
-| **Keyboard type** | Cattura INPUT: attende F9/ENTER per finire, poi ricava BBox dal buffer screenshot |
-
-TODO: PER FINIRE INPUT SOLO F9, ENTER = VADO A CAPO NON FINE INPUT
+| **Keyboard type** | Cattura INPUT: F9 per finire, ENTER per andare a capo, ricava BBox dal buffer screenshot |
 
 #### Mini UI States
 
@@ -215,8 +214,8 @@ Quando un'azione viene catturata:
 
 3. Per INPUT:
    - Buffer screenshot è quello di PRIMA che l'utente inizi a digitare
-   - Utente digita testo
-   - User preme F9/ENTER per finalizzare
+   - Utente digita testo (ENTER per andare a capo)
+   - User preme F9 per finalizzare
    - Ricava BBox dal buffer screenshot
    - Estrae OCR + ResNet da BBox
    - Salva nel DB con input_text, bbox, ocr_text, features

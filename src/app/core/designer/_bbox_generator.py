@@ -11,28 +11,27 @@ class BBoxGenerator:
                             min_size=5, max_size=1000) -> dict:
         """
         Genera bbox intelligente attorno al click.
-        Usa edge detection, adaptive thresholding, e corner detection.
+        REGOLE: 1) SEMPRE contiene il click point
+                2) PIÙ PICCOLA POSSIBILE che lo contiene
 
         Ritorna: {"x": int, "y": int, "w": int, "h": int}
         """
         h, w = screenshot.shape[:2]
-
-        # Converte a grayscale
         gray = cv2.cvtColor(screenshot, cv2.COLOR_BGR2GRAY)
 
-        # Metodo 1: Canny ultra-sensibile per bordi
+        # Metodo 1: Canny edge detection
         edges = cv2.Canny(gray, 5, 30)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
         morph = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel, iterations=2)
         dilated = cv2.dilate(morph, kernel, iterations=4)
 
-        # Metodo 2: Adaptive threshold (sensibile ai contrasti locali)
+        # Metodo 2: Adaptive threshold
         adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                         cv2.THRESH_BINARY, 15, 5)
         kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
         adaptive_dilated = cv2.dilate(adaptive, kernel2, iterations=3)
 
-        # Metodo 3: Multiple binary thresholds
+        # Metodo 3: Binary thresholds
         _, bin_dark = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY)
         _, bin_light = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
         binary_combined = cv2.bitwise_or(bin_dark, bin_light)
@@ -45,80 +44,82 @@ class BBoxGenerator:
         # Trova contours
         contours, _ = cv2.findContours(combined, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Passo 1: trova bbox che contengono il click
+        # REGOLA 1: Priorità ai contours che CONTENGONO il click
         containing_contours = []
         for contour in contours:
             x, y, cw, ch = cv2.boundingRect(contour)
+            # Controlla se il click è dentro il bbox
             if x <= click_x <= x + cw and y <= click_y <= y + ch:
+                # Filtra per size
                 if cw >= min_size and ch >= min_size and cw <= max_size and ch <= max_size:
-                    containing_contours.append((x, y, cw, ch))
+                    # Preferisci forme rettangolari/regolari
+                    contour_area = cv2.contourArea(contour)
+                    bbox_area = cw * ch
+                    if bbox_area > 0:
+                        fill_ratio = contour_area / bbox_area
+                        # Preferisci contours che riempiono bene il bbox (non troppo sparsi)
+                        if fill_ratio > 0.3:  # Almeno 30% di fill
+                            area = cw * ch
+                            containing_contours.append((x, y, cw, ch, area))
 
         if containing_contours:
-            best_contour = min(containing_contours, key=lambda b: b[2] * b[3])
+            # REGOLA 2: Seleziona il più PICCOLO (minima area)
+            best_contour = min(containing_contours, key=lambda b: b[4])
+            x, y, cw, ch, _ = best_contour
         else:
-            # Passo 2: cerca il contorno più vicino (senza restrizioni di size)
-            closest_contour = None
-            min_distance = float('inf')
+            # Nessun contour contiene il click → corner detection
+            corners = cv2.cornerHarris(gray, 2, 3, 0.04)
+            corner_points = np.where(corners > 0.02 * corners.max())
 
-            for contour in contours:
-                x, y, cw, ch = cv2.boundingRect(contour)
-                if cw < 3 or ch < 3:  # Molto permissivo
-                    continue
+            if len(corner_points[0]) > 0:
+                cy, cx = corner_points
+                # Filtra corners vicini al click (max 60 pixels)
+                distances = (cx - click_x) ** 2 + (cy - click_y) ** 2
+                nearby_idx = np.where(distances < 3600)[0]  # 60 pixels
 
-                bbox_cx = x + cw // 2
-                bbox_cy = y + ch // 2
-                distance = (bbox_cx - click_x) ** 2 + (bbox_cy - click_y) ** 2
+                if len(nearby_idx) > 0:
+                    nearby_cx = cx[nearby_idx]
+                    nearby_cy = cy[nearby_idx]
+                    x_min, x_max = nearby_cx.min(), nearby_cx.max()
+                    y_min, y_max = nearby_cy.min(), nearby_cy.max()
 
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_contour = (x, y, cw, ch)
+                    # Padding minimo
+                    pad = 3
+                    x_min = max(0, x_min - pad)
+                    y_min = max(0, y_min - pad)
+                    x_max = min(w, x_max + pad)
+                    y_max = min(h, y_max + pad)
 
-            if closest_contour and min_distance < 10000:  # Max distance ~100 pixels
-                best_contour = closest_contour
-            else:
-                # Passo 3: corner detection (Harris corners) - molto restrittivo
-                corners = cv2.cornerHarris(gray, 2, 3, 0.04)
-                corner_points = np.where(corners > 0.02 * corners.max())  # Soglia più alta
+                    cw = x_max - x_min
+                    ch = y_max - y_min
 
-                if len(corner_points[0]) > 0:
-                    cy, cx = corner_points
-                    # Filtra corners MOLTO vicini al click (max 50 pixels)
-                    distances = (cx - click_x) ** 2 + (cy - click_y) ** 2
-                    nearby_idx = np.where(distances < 2500)[0]  # 50 pixels max
-
-                    if len(nearby_idx) > 0:
-                        nearby_cx = cx[nearby_idx]
-                        nearby_cy = cy[nearby_idx]
-                        x_min, x_max = nearby_cx.min(), nearby_cx.max()
-                        y_min, y_max = nearby_cy.min(), nearby_cy.max()
-
-                        # Padding minimo per mantenere bbox tight
-                        pad = 2
-                        x_min = max(0, x_min - pad)
-                        y_min = max(0, y_min - pad)
-                        x_max = min(w, x_max + pad)
-                        y_max = min(h, y_max + pad)
-
-                        cw = x_max - x_min
-                        ch = y_max - y_min
-
-                        if cw > min_size and ch > min_size:
-                            best_contour = (x_min, y_min, cw, ch)
-                        else:
-                            best_contour = BBoxGenerator._fallback_bbox(click_x, click_y, w, h)
+                    if cw >= min_size and ch >= min_size:
+                        x, y = x_min, y_min
                     else:
-                        best_contour = BBoxGenerator._fallback_bbox(click_x, click_y, w, h)
+                        x, y, cw, ch = BBoxGenerator._fallback_bbox(click_x, click_y, w, h, size=25)
                 else:
-                    # Passo 4: fallback
-                    best_contour = BBoxGenerator._fallback_bbox(click_x, click_y, w, h)
+                    x, y, cw, ch = BBoxGenerator._fallback_bbox(click_x, click_y, w, h, size=25)
+            else:
+                x, y, cw, ch = BBoxGenerator._fallback_bbox(click_x, click_y, w, h, size=25)
 
-        x, y, cw, ch = best_contour
+        # Sanity check: il click DEVE essere dentro la bbox
+        if not (x <= click_x <= x + cw and y <= click_y <= y + ch):
+            # Se il click non è dentro, espandi il bbox per includerlo
+            x_min = min(x, click_x - 10)
+            x_max = max(x + cw, click_x + 10)
+            y_min = min(y, click_y - 10)
+            y_max = max(y + ch, click_y + 10)
 
-        # Sanity check: se il bbox è troppo grande (>40% dello schermo), usa fallback
-        bbox_area = cw * ch
-        screen_area = h * w
-        if bbox_area > 0.4 * screen_area:
-            x, y, cw, ch = BBoxGenerator._fallback_bbox(click_x, click_y, w, h)
+            # Clamp ai bordi dell'immagine
+            x_min = max(0, x_min)
+            y_min = max(0, y_min)
+            x_max = min(w, x_max)
+            y_max = min(h, y_max)
+
+            x = x_min
+            y = y_min
+            cw = x_max - x_min
+            ch = y_max - y_min
 
         return {
             "x": int(x),
