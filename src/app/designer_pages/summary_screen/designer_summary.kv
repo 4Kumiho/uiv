@@ -41,13 +41,13 @@
         pos_hint: {"center_y": 0.5}
         canvas.before:
             Color:
-                rgba: root.badge_color[0], root.badge_color[1], root.badge_color[2], 0.22
+                rgba: 0.12, 0.12, 0.22, 0.8
             RoundedRectangle:
                 pos: self.pos
                 size: self.size
                 radius: [dp(4)]
             Color:
-                rgba: root.badge_color
+                rgba: 0.50, 0.50, 0.60, 1
             Line:
                 rounded_rectangle: (self.x, self.y, self.width, self.height, dp(4))
                 width: 1
@@ -56,7 +56,7 @@
             text: root.action_label
             font_size: "11sp"
             bold: True
-            color: root.badge_color[0] + 0.3, root.badge_color[1] + 0.3, root.badge_color[2] + 0.3, 1
+            color: 0.35, 0.53, 1.0, 1
             halign: "center"
             valign: "center"
             text_size: self.size
@@ -125,7 +125,7 @@
             # ── LEFT PANEL: step list ─────────────────────────────────────
             BoxLayout:
                 size_hint_x: None
-                width: dp(280)
+                width: dp(180)
                 orientation: "vertical"
                 canvas.before:
                     Color:
@@ -173,6 +173,32 @@
                         size_hint_y: None
                         height: self.minimum_height
                         spacing: 0
+
+                # Save button
+                BoxLayout:
+                    size_hint_y: None
+                    height: dp(50)
+                    padding: [dp(12), dp(8), dp(12), dp(8)]
+
+                    Button:
+                        text: "Save"
+                        font_size: "13sp"
+                        background_color: 0, 0, 0, 0
+                        color: root.button_color
+                        disabled: not root.session_modified[0]
+                        on_release: root.save_session()
+                        canvas.before:
+                            Color:
+                                rgba: root.button_bg_color
+                            RoundedRectangle:
+                                pos: self.pos
+                                size: self.size
+                                radius: [dp(8)]
+                            Color:
+                                rgba: root.button_border_color
+                            Line:
+                                rounded_rectangle: (self.x, self.y, self.width, self.height, dp(8))
+                                width: 1
 
             # Thin vertical divider between panels
             Widget:

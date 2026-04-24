@@ -458,7 +458,8 @@ class ActionCapture:
     def _process_input_action(self):
         """Processa INPUT action in thread separato."""
         try:
-            screenshot = self.screenshot_handler.wait_for_screen_stability()
+            # Use buffer screenshot (captured before input started)
+            screenshot = self.buffer_screenshot
 
             action = {
                 'action_type': 'INPUT',
@@ -470,6 +471,9 @@ class ActionCapture:
             if self.on_action_callback:
                 self.on_action_callback(action)
                 logger.debug("Input callback executed")
+
+            # Wait for screen to stabilize after input completion
+            self.screenshot_handler.wait_for_screen_stability()
 
             # Cattura nuovo screenshot nel buffer dopo INPUT
             self.buffer_screenshot = self.screenshot_handler.capture_full_screen()

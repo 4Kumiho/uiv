@@ -7,6 +7,11 @@ import cv2
 import time
 import logging
 
+# Add project root to path for absolute imports
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'database'))
 
@@ -433,7 +438,7 @@ if __name__ == "__main__":
                 "db_path": db_path,
                 "monitor_info": app.monitor_info
             }, f)
-        logger.info(f"Wrote session_done.json: session_id={app.session.id}")
+        logger.info(f"Session completed: session_id={app.session.id}")
     else:
         import tempfile
         temp_dir = tempfile.gettempdir()
