@@ -29,6 +29,14 @@ class DesignerDatabase:
             session.refresh(step)
             return step
 
+    def update_step(self, session_id: int, step: DesignerStep):
+        """Update an existing step in the database."""
+        with self._Session() as session:
+            step.session_id = session_id
+            session.merge(step)
+            session.commit()
+            return step
+
     def get_session(self, session_id: int) -> DesignerSession:
         with self._Session() as session:
             s = session.query(DesignerSession).filter_by(id=session_id).one_or_none()

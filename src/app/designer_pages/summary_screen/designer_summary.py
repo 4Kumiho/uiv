@@ -214,6 +214,7 @@ class DesignerSummaryScreen(Screen):
         Draw on a copy of bgr:
           - A filled circle at click coordinates
           - A coloured rectangle over the bbox
+          - For DRAG_AND_DROP: 2 rectangles and 2 circles
         Returns the annotated array.
         """
         out = bgr.copy()
@@ -234,34 +235,75 @@ class DesignerSummaryScreen(Screen):
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        # --- bbox rectangle ---
-        if bbox and all(k in bbox for k in ("x", "y", "w", "h")):
-            bx, by, bw, bh = bbox["x"], bbox["y"], bbox["w"], bbox["h"]
-            # Rectangle colour: match action type (BGR order for OpenCV)
-            rect_color_map = {
-                "SINGLE_CLICK":  (242, 140,  64),
-                "DOUBLE_CLICK":  (242,  64, 140),
-                "SCROLL":        (120, 191,  41),
-                "INPUT":         ( 89, 165, 255),
-                "DRAG":          ( 61,  77, 232),
-            }
-            rect_bgr = rect_color_map.get(step.action_type, (180, 100, 100))
-            cv2.rectangle(out, (bx, by), (bx + bw, by + bh), rect_bgr, thickness=3)
+        # Rectangle colour: match action type (BGR order for OpenCV)
+        rect_color_map = {
+            "SINGLE_CLICK":    (242, 140,  64),
+            "DOUBLE_CLICK":    (242,  64, 140),
+            "SCROLL":          (120, 191,  41),
+            "INPUT":           ( 89, 165, 255),
+            "DRAG_AND_DROP":   ( 61,  77, 232),
+            "DRAG":            ( 61,  77, 232),
+        }
+        rect_bgr = rect_color_map.get(step.action_type, (180, 100, 100))
 
-        # --- click dot / circle ---
-        if coords and "x" in coords and "y" in coords:
-            cx, cy = int(coords["x"]), int(coords["y"])
-            if step.action_type in ("SINGLE_CLICK", "DOUBLE_CLICK", "DRAG"):
-                dot_bgr = (50, 205,  50)
-            else:
-                dot_bgr = (64, 140, 242)
+        # --- DRAG_AND_DROP: 2 bbox + 2 circles ---
+        if step.action_type == "DRAG_AND_DROP":
+            # First bbox (start point)
+            if bbox and all(k in bbox for k in ("x", "y", "w", "h")):
+                bx, by, bw, bh = bbox["x"], bbox["y"], bbox["w"], bbox["h"]
+                cv2.rectangle(out, (bx, by), (bx + bw, by + bh), rect_bgr, thickness=3)
 
-            # Filled circle
-            cv2.circle(out, (cx, cy), 12, dot_bgr, thickness=-1)
-            # White border for visibility
-            cv2.circle(out, (cx, cy), 12, (255, 255, 255), thickness=2)
-            # Small centre dot
-            cv2.circle(out, (cx, cy),  3, (0, 0, 0),       thickness=-1)
+            # Second bbox (end point)
+            drag_end_bbox = {}
+            if step.drag_end_bbox:
+                try:
+                    drag_end_bbox = json.loads(step.drag_end_bbox)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            if drag_end_bbox and all(k in drag_end_bbox for k in ("x", "y", "w", "h")):
+                bx2, by2, bw2, bh2 = drag_end_bbox["x"], drag_end_bbox["y"], drag_end_bbox["w"], drag_end_bbox["h"]
+                cv2.rectangle(out, (bx2, by2), (bx2 + bw2, by2 + bh2), (255, 100, 100), thickness=3)  # Rosso per fine
+
+            # Start circle
+            if coords and "x" in coords and "y" in coords:
+                cx, cy = int(coords["x"]), int(coords["y"])
+                cv2.circle(out, (cx, cy), 12, (50, 205, 50), thickness=-1)  # Verde
+                cv2.circle(out, (cx, cy), 12, (255, 255, 255), thickness=2)
+                cv2.circle(out, (cx, cy), 3, (0, 0, 0), thickness=-1)
+
+            # End circle
+            drag_end_coords = {}
+            if step.drag_end_coordinates:
+                try:
+                    drag_end_coords = json.loads(step.drag_end_coordinates)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            if drag_end_coords and "x" in drag_end_coords and "y" in drag_end_coords:
+                cx2, cy2 = int(drag_end_coords["x"]), int(drag_end_coords["y"])
+                cv2.circle(out, (cx2, cy2), 12, (255, 100, 100), thickness=-1)  # Rosso
+                cv2.circle(out, (cx2, cy2), 12, (255, 255, 255), thickness=2)
+                cv2.circle(out, (cx2, cy2), 3, (0, 0, 0), thickness=-1)
+
+        # --- Regular click: 1 bbox + 1 circle ---
+        else:
+            # --- bbox rectangle ---
+            if bbox and all(k in bbox for k in ("x", "y", "w", "h")):
+                bx, by, bw, bh = bbox["x"], bbox["y"], bbox["w"], bbox["h"]
+                cv2.rectangle(out, (bx, by), (bx + bw, by + bh), rect_bgr, thickness=3)
+
+            # --- click dot / circle ---
+            if coords and "x" in coords and "y" in coords:
+                cx, cy = int(coords["x"]), int(coords["y"])
+                if step.action_type in ("SINGLE_CLICK", "DOUBLE_CLICK"):
+                    dot_bgr = (50, 205, 50)
+                else:
+                    dot_bgr = (64, 140, 242)
+
+                cv2.circle(out, (cx, cy), 12, dot_bgr, thickness=-1)
+                cv2.circle(out, (cx, cy), 12, (255, 255, 255), thickness=2)
+                cv2.circle(out, (cx, cy), 3, (0, 0, 0), thickness=-1)
 
         return out
 

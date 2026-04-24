@@ -12,6 +12,7 @@ _ORANGE  = "#f39c12"
 _GREEN   = "#27ae60"
 
 
+
 class MiniUI:
     def __init__(self, mode='DESIGNER', on_end_callback=None, on_input_end_callback=None, monitor_info=None):
         """
@@ -65,14 +66,14 @@ class MiniUI:
         main_row.pack(fill="both", padx=2, pady=0)
 
         # All elements on same row
-        tk.Label(main_row, text="●", fg=_RED, bg=_BG,
+        tk.Label(main_row, text="●", fg=_ORANGE, bg=_BG,
                  font=("Segoe UI", 9, "bold")).pack(side="left")
 
         self.status_label = tk.Label(main_row, text="REC", fg=_FG, bg=_BG,
                                      font=("Segoe UI", 8, "bold"))
         self.status_label.pack(side="left", padx=(2, 0))
 
-        self.step_var = tk.StringVar(value="Step 0")
+        self.step_var = tk.StringVar(value="Step 1")
         tk.Label(main_row, textvariable=self.step_var, fg=_FG, bg=_BG,
                  font=("Segoe UI", 8)).pack(side="left", padx=(2, 0))
 
@@ -82,8 +83,8 @@ class MiniUI:
         # F9 button
         self.f9_button = tk.Button(
             main_row, text="F9",
-            bg=_RED, fg="#fff",
-            activebackground="#c0392b", activeforeground="#fff",
+            bg=_ORANGE, fg="#fff",
+            activebackground="#d68910", activeforeground="#fff",
             relief="flat", bd=0, padx=3, pady=1,
             font=("Segoe UI", 8, "bold"),
             command=self._on_f9_click,
@@ -110,6 +111,20 @@ class MiniUI:
             self.f9_button.config(bg=_GREEN, activebackground="#229954")
             self._color = _GREEN
             self.is_ready = True
+
+    def set_loading(self):
+        """Cambia colore a ARANCIONE durante il caricamento dei modelli."""
+        if not self.window:
+            return
+        self.window.after(0, lambda: self._do_set_loading())
+
+    def _do_set_loading(self):
+        """Esegui set_loading sul tkinter thread."""
+        if self.status_label and self.f9_button:
+            self.status_label.config(fg=_ORANGE)
+            self.f9_button.config(bg=_ORANGE, activebackground="#d68910")
+            self._color = _ORANGE
+            self.is_ready = False
 
     def set_saving(self):
         """Torna ROSSO durante il salvataggio."""

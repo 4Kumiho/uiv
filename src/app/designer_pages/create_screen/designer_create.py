@@ -83,6 +83,12 @@ class DesignerCreateScreen(Screen):
 
         monitor_num = int(monitor.split()[1]) - 1
 
+        # Controlla se la sessione esiste gia
+        project_folder = os.path.join(output_folder, name)
+        if os.path.exists(project_folder):
+            self._error_msg = f"Designer con questo nome gia' esistente"
+            return
+
         # Minimizza la finestra Kivy
         hwnd = ctypes.windll.user32.FindWindowW(None, "UI-Validator")
         if hwnd:
@@ -93,13 +99,8 @@ class DesignerCreateScreen(Screen):
             os.path.dirname(__file__), '..', '..', 'core', 'designer', 'main_designer.py'
         ))
 
-        # Launch subprocess (folders will be created by main_designer.py)
-        project_folder = os.path.join(output_folder, name)
-
         proc = subprocess.Popen(
-            [sys.executable, designer_main, name, output_folder, str(monitor_num)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            [sys.executable, designer_main, name, output_folder, str(monitor_num)]
         )
 
         # Store project folder for background thread
