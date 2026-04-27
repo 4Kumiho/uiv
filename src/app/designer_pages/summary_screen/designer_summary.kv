@@ -6,8 +6,8 @@
 # ---------------------------------------------------------------------------
 <StepRow>:
     orientation: "horizontal"
-    padding: [dp(10), dp(6)]
-    spacing: dp(8)
+    padding: [dp(1), dp(6)]
+    spacing: dp(1)
     size_hint_y: None
     height: dp(52)
 
@@ -24,21 +24,33 @@
             points: self.x, self.y, self.x + self.width, self.y
             width: 1
 
+    # Delete button
+    Button:
+        size_hint: None, None
+        size: dp(20), dp(26)
+        pos_hint: {"center_y": 0.5}
+        text: "×"
+        font_size: "16sp"
+        bold: True
+        color: 0.95, 0.25, 0.25, 1
+        background_color: 0.12, 0.12, 0.22, 0.6
+        on_release: if root.on_delete: root.on_delete(root)
+
     # Step number label
     Label:
         text: str(root.step_number)
         font_size: "12sp"
         color: 0.55, 0.55, 0.80, 1
         size_hint: None, 1
-        width: dp(26)
-        halign: "right"
+        width: dp(18)
+        halign: "center"
         valign: "center"
         text_size: self.size
 
     # Action-type badge
     BoxLayout:
         size_hint: None, None
-        size: dp(100), dp(26)
+        size: dp(85), dp(26)
         pos_hint: {"center_y": 0.5}
         canvas.before:
             Color:
@@ -55,12 +67,41 @@
 
         Label:
             text: root.action_label
-            font_size: "11sp"
+            font_size: "10sp"
             bold: True
             color: 0.35, 0.53, 1.0, 1
             halign: "center"
             valign: "center"
             text_size: self.size
+
+    # Testcase step label
+    Label:
+        text: "#"
+        font_size: "10sp"
+        color: 0.55, 0.55, 0.80, 1
+        size_hint: None, 1
+        width: dp(10)
+        halign: "center"
+        valign: "center"
+        text_size: self.size
+
+    # Testcase step input
+    TextInput:
+        id: testcase_input
+        text: root.testcase_step
+        hint_text: ""
+        size_hint: None, None
+        size: dp(25), dp(28)
+        pos_hint: {"center_y": 0.5}
+        input_filter: "int"
+        multiline: False
+        font_size: "10sp"
+        background_color: 0.10, 0.10, 0.20, 1
+        foreground_color: 0.80, 0.90, 1.0, 1
+        cursor_color: 0.35, 0.53, 1.0, 1
+        padding: [dp(3), dp(6)]
+        halign: "center"
+        on_text: if root.on_testcase_change: root.on_testcase_change()
 
 
 # ---------------------------------------------------------------------------

@@ -54,13 +54,17 @@ class StepRow(BoxLayout):
     action_label  = StringProperty("")
     badge_color   = ListProperty([0.40, 0.40, 0.60, 1])
     is_selected   = ListProperty([0.09, 0.09, 0.18, 1])
+    testcase_step = StringProperty("")  # For TextInput binding
 
-    def __init__(self, step, on_select_callback, **kwargs):
+    def __init__(self, step, on_select_callback, on_delete_callback=None, on_testcase_change_callback=None, **kwargs):
         super().__init__(**kwargs)
         self._step = step
         self._on_select_callback = on_select_callback
+        self.on_delete = on_delete_callback
+        self.on_testcase_change = on_testcase_change_callback
         self.step_number  = step.step_number
         self.action_label = step.action_type
+        self.testcase_step = str(step.testcase_step) if step.testcase_step else ""
         r, g, b, a        = action_color(step.action_type)
         self.badge_color   = [r, g, b, a]
 
@@ -72,7 +76,11 @@ class StepRow(BoxLayout):
 
     def on_touch_down(self, touch):
         if self.collide_point(*touch.pos):
-            self._on_select_callback(self)
+            # Let child widgets handle their own events first (Button, TextInput)
+            result = super().on_touch_down(touch)
+            # If no child handled it, select this row
+            if not result:
+                self._on_select_callback(self)
             return True
         return super().on_touch_down(touch)
 
@@ -97,6 +105,7 @@ class DesignerSummaryScreen(Screen):
         self._selected_row = None
         self._session_modified = False
         self._modified_steps = set()  # Track which step indices were modified
+        self._pending_deletes = []  # step_id values marked for deletion
         self._session_id = None
         self._db_path = None
         self._current_step = None
@@ -169,6 +178,8 @@ class DesignerSummaryScreen(Screen):
             row = StepRow(
                 step=step,
                 on_select_callback=self._on_step_selected,
+                on_delete_callback=self._request_delete,
+                on_testcase_change_callback=self._on_testcase_input_changed,
                 size_hint_y=None,
                 height=52
             )
@@ -988,6 +999,48 @@ class DesignerSummaryScreen(Screen):
         img_widget = self.ids.step_image
         img_widget.texture = texture
 
+    def _on_testcase_input_changed(self):
+        """Mark session as modified when testcase_step is edited."""
+        self._session_modified = True
+        self.session_modified = [True]
+        self._update_button_colors()
+
+    def _request_delete(self, row: StepRow):
+        """Mark a step for deletion and remove from UI."""
+        step = row._step
+        self._pending_deletes.append(step.id)
+
+        # Remove from container
+        container = self.ids.step_list_container
+        container.remove_widget(row)
+
+        # Remove from steps list
+        self._steps = [s for s in self._steps if s.id != step.id]
+        self._step_rows = [r for r in self._step_rows if r is not row]
+
+        # Mark as modified
+        self._session_modified = True
+        self.session_modified = [True]
+        self._update_button_colors()
+
+        # Renumber and redraw
+        self._renumber_rows()
+
+        # Select next or previous step
+        if self._step_rows:
+            next_row = self._step_rows[0]
+            self._on_step_selected(next_row)
+        else:
+            self._clear_image()
+
+    def _renumber_rows(self):
+        """Renumber step_number labels after deletion."""
+        # Reverse order because children are in reverse (bottom to top)
+        children = self.ids.step_list_container.children[::-1]
+        for i, row in enumerate(children, 1):
+            row.step_number = i
+            row._step.step_number = i
+
     def save_session(self):
         """Save modified bboxes: recalculate OCR and ResNet, save to DB."""
         if not self._session_modified or not self._steps:
@@ -1257,6 +1310,14 @@ class DesignerSummaryScreen(Screen):
                 except:
                     pass
 
+        # Read testcase_step values from TextInput fields
+        try:
+            for row in self.ids.step_list_container.children[::-1]:
+                ts_text = row.ids.testcase_input.text.strip()
+                row._step.testcase_step = int(ts_text) if ts_text.isdigit() else None
+        except Exception as e:
+            logger.error(f"Error reading testcase_step values: {e}")
+
         # Save all steps to DB
         try:
             from src.app.core.database.designer_db import DesignerDatabase
@@ -1265,8 +1326,24 @@ class DesignerSummaryScreen(Screen):
             logger.info("=" * 80)
 
             db = DesignerDatabase(self._db_path)
+
+            # Update all existing steps
             for step in self._steps:
                 db.update_step(self._session_id, step)
+
+            # Delete marked steps
+            if self._pending_deletes:
+                logger.info(f"Deleting {len(self._pending_deletes)} step(s)...")
+                for step_id in self._pending_deletes:
+                    db.delete_step(step_id)
+                    logger.info(f"  Deleted step ID {step_id}")
+
+            # Reorder remaining steps
+            if self._pending_deletes:
+                db.reorder_steps(self._session_id)
+                logger.info("Step numbers reordered")
+                self._pending_deletes.clear()
+
             db.close()
 
             logger.info("=" * 80)

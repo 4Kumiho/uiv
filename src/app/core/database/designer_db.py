@@ -8,7 +8,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from src.app.core.database.models import Base, DesignerSession, DesignerStep
 
@@ -19,6 +19,7 @@ class DesignerDatabase:
         self._engine = create_engine(f"sqlite:///{db_path}", echo=False)
         Base.metadata.create_all(self._engine)
         self._Session = sessionmaker(bind=self._engine)
+        self._migrate_schema()
 
     def create_session(self, name: str) -> DesignerSession:
         with self._Session() as session:
@@ -57,6 +58,35 @@ class DesignerDatabase:
             for step in steps:
                 session.expunge(step)
             return steps
+
+    def delete_step(self, step_id: int):
+        """Delete a step by ID."""
+        with self._Session() as session:
+            step = session.get(DesignerStep, step_id)
+            if step:
+                session.delete(step)
+                session.commit()
+
+    def reorder_steps(self, session_id: int):
+        """Reorder step_number 1,2,3... after a deletion."""
+        with self._Session() as session:
+            steps = session.query(DesignerStep)\
+                .filter_by(session_id=session_id)\
+                .order_by(DesignerStep.step_number)\
+                .all()
+            for i, step in enumerate(steps, 1):
+                step.step_number = i
+            session.commit()
+
+    def _migrate_schema(self):
+        """Run schema migrations for existing databases."""
+        with self._engine.connect() as conn:
+            try:
+                conn.execute(text("ALTER TABLE designer_step ADD COLUMN testcase_step INTEGER"))
+                conn.commit()
+            except:
+                # Column already exists
+                pass
 
     def close(self):
         self._engine.dispose()

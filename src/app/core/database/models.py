@@ -56,6 +56,9 @@ class DesignerStep(Base):
     scroll_dx = Column(Integer, nullable=True)
     scroll_dy = Column(Integer, nullable=True)
 
+    # Testcase step number (user-assigned)
+    testcase_step = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("DesignerSession", back_populates="steps")
