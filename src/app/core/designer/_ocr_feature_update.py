@@ -78,6 +78,14 @@ def process_bbox(screenshot_path: str, bbox_json: str):
             logger.error(f"ResNet extraction failed: {feat_err}")
             features = None
 
+        # Encode bbox crop as PNG hex for JSON transport
+        bbox_screenshot_hex = ""
+        try:
+            _, buf = cv2.imencode('.png', bbox_image)
+            bbox_screenshot_hex = buf.tobytes().hex()
+        except Exception as e:
+            logger.error(f"Failed to encode bbox_screenshot: {e}")
+
         # Return results
         if isinstance(features, np.ndarray):
             features_out = features.astype(np.float32).tobytes().hex()
@@ -88,7 +96,8 @@ def process_bbox(screenshot_path: str, bbox_json: str):
 
         result = {
             "ocr_text": ocr_text or "",
-            "features": features_out
+            "features": features_out,
+            "bbox_screenshot": bbox_screenshot_hex
         }
         output_json = json.dumps(result)
         print(output_json, flush=True)

@@ -46,6 +46,12 @@ class DesignerStep(Base):
     drag_end_ocr_text = Column(String, nullable=True)
     drag_end_features = Column(LargeBinary, nullable=True)
 
+    # Bbox crop screenshot and relative coordinates (for position-independent matching)
+    bbox_screenshot = Column(LargeBinary, nullable=True)  # PNG bytes of bbox region
+    coordinates_rel = Column(String, nullable=True)  # JSON: {"x": rel_x, "y": rel_y}
+    drag_end_bbox_screenshot = Column(LargeBinary, nullable=True)  # PNG bytes of drag_end bbox
+    drag_end_coordinates_rel = Column(String, nullable=True)  # JSON: {"x": rel_x, "y": rel_y}
+
     # SCROLL
     scroll_dx = Column(Integer, nullable=True)
     scroll_dy = Column(Integer, nullable=True)

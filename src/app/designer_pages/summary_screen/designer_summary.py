@@ -682,12 +682,32 @@ class DesignerSummaryScreen(Screen):
                     coords['x'] = int(curr_img_x)
                     coords['y'] = int(curr_img_y)
                     self._current_step.drag_end_coordinates = json.dumps(coords)
+                    # Recalculate relative coordinates for drag end
+                    if self._current_step.drag_end_bbox:
+                        try:
+                            bbox_dict = json.loads(self._current_step.drag_end_bbox)
+                            rel_x = coords['x'] - bbox_dict.get("x", 0)
+                            rel_y = coords['y'] - bbox_dict.get("y", 0)
+                            self._current_step.drag_end_coordinates_rel = json.dumps({"x": int(rel_x), "y": int(rel_y)})
+                            self._session_modified = True
+                        except Exception as e:
+                            logger.error(f"Error recalculating drag_end_coordinates_rel: {e}")
                 else:
                     # Drag main click point
                     coords = json.loads(self._current_step.coordinates) if self._current_step.coordinates else {}
                     coords['x'] = int(curr_img_x)
                     coords['y'] = int(curr_img_y)
                     self._current_step.coordinates = json.dumps(coords)
+                    # Recalculate relative coordinates for main click
+                    if self._current_step.bbox:
+                        try:
+                            bbox_dict = json.loads(self._current_step.bbox)
+                            rel_x = coords['x'] - bbox_dict.get("x", 0)
+                            rel_y = coords['y'] - bbox_dict.get("y", 0)
+                            self._current_step.coordinates_rel = json.dumps({"x": int(rel_x), "y": int(rel_y)})
+                            self._session_modified = True
+                        except Exception as e:
+                            logger.error(f"Error recalculating coordinates_rel: {e}")
 
                 self._redraw_image_with_modified_bbox()
                 self._last_touch_pos = touch.pos
@@ -988,21 +1008,24 @@ class DesignerSummaryScreen(Screen):
             return
 
         total_steps = len(self._modified_steps)
-        logger.info("Saving modified steps...")
+        logger.info("=" * 80)
+        logger.info(f"🔵 SAVING SESSION - {total_steps} step(s) modified")
+        logger.info("=" * 80)
         import subprocess
         import tempfile
 
         # Recalculate OCR and ResNet for modified steps
         step_count = 0
         for step in self._modified_steps:
-            logger.debug(f"Processing step index {step.step_number}")
             step_count += 1
+            logger.info(f"\n📌 STEP #{step.step_number} - {step.action_type} ({step_count}/{total_steps})")
             if total_steps > 0:
                 self.save_progress = step_count / total_steps
 
             # Decode screenshot to temp file
             img_bytes = step.screenshot
             if img_bytes is None:
+                logger.warning(f"  ⚠️  No screenshot found, skipping")
                 continue
 
             nparr = np.frombuffer(img_bytes, dtype=np.uint8)
@@ -1016,6 +1039,16 @@ class DesignerSummaryScreen(Screen):
                 temp_screenshot_path = tmp.name
 
             try:
+                # Log current bbox and coordinates before processing
+                if step.bbox:
+                    try:
+                        bbox = json.loads(step.bbox)
+                        coords = json.loads(step.coordinates) if step.coordinates else {}
+                        logger.info(f"bbox (absolute): {{x: {bbox.get('x')}, y: {bbox.get('y')}, w: {bbox.get('w')}, h: {bbox.get('h')}}}")
+                        logger.info(f"coordinates (absolute): {{x: {coords.get('x')}, y: {coords.get('y')}}}")
+                    except:
+                        pass
+
                 # Process main bbox
                 if step.bbox:
                     try:
@@ -1065,11 +1098,33 @@ class DesignerSummaryScreen(Screen):
                                             output = {"error": "Invalid JSON from worker"}
 
                                         if "error" not in output:
+                                            # Update OCR text
+                                            old_ocr = step.ocr_text
                                             step.ocr_text = output.get("ocr_text", "")
-                                            # Convert hex string back to bytes
+                                            logger.info(f"  ocr_text: '{old_ocr}' → '{step.ocr_text}'")
+
+                                            # Update ResNet features
                                             features_hex = output.get("features")
                                             step.features = bytes.fromhex(features_hex) if isinstance(features_hex, str) else features_hex
-                                            logger.info(f"Step {step.step_number} bbox 1: OCR/ResNet updated")
+                                            logger.info(f"  features: {len(step.features)} bytes")
+
+                                            # Update bbox screenshot
+                                            bbox_screenshot_hex = output.get("bbox_screenshot")
+                                            if bbox_screenshot_hex:
+                                                step.bbox_screenshot = bytes.fromhex(bbox_screenshot_hex)
+                                                logger.info(f"  bbox_screenshot: {len(step.bbox_screenshot)} bytes")
+
+                                            # Recalculate relative coordinates if bbox was modified
+                                            if step.bbox and step.coordinates:
+                                                try:
+                                                    bbox_dict = json.loads(step.bbox)
+                                                    coords_dict = json.loads(step.coordinates)
+                                                    rel_x = coords_dict.get("x", 0) - bbox_dict.get("x", 0)
+                                                    rel_y = coords_dict.get("y", 0) - bbox_dict.get("y", 0)
+                                                    step.coordinates_rel = json.dumps({"x": int(rel_x), "y": int(rel_y)})
+                                                    logger.info(f"coordinates_rel: {{x: {int(rel_x)}, y: {int(rel_y)}}}")
+                                                except Exception as e:
+                                                    logger.error(f"Error recalculating coordinates_rel: {e}")
                                         else:
                                             logger.warning(f"Step {step.step_number} bbox 1 error: {output['error']}")
                                     else:
@@ -1091,6 +1146,15 @@ class DesignerSummaryScreen(Screen):
                         logger.error(f"Error processing step {step.step_number}: {e}")
 
                 # Process drag_end_bbox if DRAG_AND_DROP
+                if step.action_type == "DRAG_AND_DROP" and step.drag_end_bbox:
+                    try:
+                        drag_end_bbox = json.loads(step.drag_end_bbox)
+                        drag_end_coords = json.loads(step.drag_end_coordinates) if step.drag_end_coordinates else {}
+                        logger.info(f"drag_end_bbox (absolute): {{x: {drag_end_bbox.get('x')}, y: {drag_end_bbox.get('y')}, w: {drag_end_bbox.get('w')}, h: {drag_end_bbox.get('h')}}}")
+                        logger.info(f"drag_end_coordinates (absolute): {{x: {drag_end_coords.get('x')}, y: {drag_end_coords.get('y')}}}")
+                    except:
+                        pass
+
                 if step.action_type == "DRAG_AND_DROP" and step.drag_end_bbox:
                     try:
                         bbox = json.loads(step.drag_end_bbox)
@@ -1139,10 +1203,34 @@ class DesignerSummaryScreen(Screen):
                                             output = {"error": "Invalid JSON from worker"}
 
                                         if "error" not in output:
+                                            # Update DRAG END OCR text
+                                            old_ocr = step.drag_end_ocr_text
                                             step.drag_end_ocr_text = output.get("ocr_text", "")
-                                            # Convert hex string back to bytes
+                                            logger.info(f"  drag_end_ocr_text: '{old_ocr}' → '{step.drag_end_ocr_text}'")
+
+                                            # Update DRAG END ResNet features
                                             features_hex = output.get("features")
                                             step.drag_end_features = bytes.fromhex(features_hex) if isinstance(features_hex, str) else features_hex
+                                            logger.info(f"  drag_end_features: {len(step.drag_end_features)} bytes")
+
+                                            # Update DRAG END bbox screenshot
+                                            bbox_screenshot_hex = output.get("bbox_screenshot")
+                                            if bbox_screenshot_hex:
+                                                step.drag_end_bbox_screenshot = bytes.fromhex(bbox_screenshot_hex)
+                                                logger.info(f"  drag_end_bbox_screenshot: {len(step.drag_end_bbox_screenshot)} bytes")
+
+                                            # Recalculate relative coordinates if drag_end_bbox was modified
+                                            if step.drag_end_bbox and step.drag_end_coordinates:
+                                                try:
+                                                    bbox_dict = json.loads(step.drag_end_bbox)
+                                                    coords_dict = json.loads(step.drag_end_coordinates)
+                                                    rel_x = coords_dict.get("x", 0) - bbox_dict.get("x", 0)
+                                                    rel_y = coords_dict.get("y", 0) - bbox_dict.get("y", 0)
+                                                    step.drag_end_coordinates_rel = json.dumps({"x": int(rel_x), "y": int(rel_y)})
+                                                    logger.info(f"drag_end_coordinates_rel: {{x: {int(rel_x)}, y: {int(rel_y)}}}")
+                                                except Exception as e:
+                                                    logger.error(f"Error recalculating drag_end_coordinates_rel: {e}")
+
                                             logger.info(f"Step {step.step_number} bbox 2: OCR/ResNet updated")
                                         else:
                                             logger.warning(f"Step {step.step_number} bbox 2 error: {output['error']}")
@@ -1172,11 +1260,18 @@ class DesignerSummaryScreen(Screen):
         # Save all steps to DB
         try:
             from src.app.core.database.designer_db import DesignerDatabase
+            logger.info("\n" + "=" * 80)
+            logger.info(f"💾 SAVING ALL {len(self._steps)} STEPS TO DATABASE...")
+            logger.info("=" * 80)
+
             db = DesignerDatabase(self._db_path)
             for step in self._steps:
                 db.update_step(self._session_id, step)
             db.close()
-            logger.info("Session saved to database")
+
+            logger.info("=" * 80)
+            logger.info("✅ SESSION SAVED TO DATABASE")
+            logger.info("=" * 80 + "\n")
 
             # Reload steps from DB to avoid SQLAlchemy detached instance errors
             # Remember which step was being viewed

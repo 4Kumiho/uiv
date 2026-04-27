@@ -183,6 +183,8 @@ class DesignerApp:
             screenshot_path=screenshot_path,
             coordinates=json.dumps(action_dict.get('coordinates', {})),
             bbox=json.dumps(result.get('bbox', {})),
+            bbox_screenshot=result.get('bbox_screenshot'),
+            coordinates_rel=json.dumps(result.get('coordinates_rel', {})),
             input_text=action_dict.get('input_text'),
             scroll_dx=action_dict.get('scroll_dx'),
             scroll_dy=action_dict.get('scroll_dy'),
@@ -190,6 +192,8 @@ class DesignerApp:
             features=result.get('features'),
             drag_end_coordinates=json.dumps(action_dict.get('drag_end_coordinates', {})),
             drag_end_bbox=json.dumps(result.get('drag_end_bbox', {})),
+            drag_end_bbox_screenshot=result.get('drag_end_bbox_screenshot'),
+            drag_end_coordinates_rel=json.dumps(result.get('drag_end_coordinates_rel', {})),
             drag_end_ocr_text=result.get('drag_end_ocr_text', ''),
             drag_end_features=result.get('drag_end_features'),
         )
@@ -289,6 +293,14 @@ class DesignerApp:
         bbox_dict = self._extract_bbox(x, y, screenshot)
         bbox_image = BBoxGenerator.crop_image(screenshot, bbox_dict)
 
+        # Encode bbox crop as PNG bytes for storage
+        _, buf = cv2.imencode('.png', bbox_image)
+        bbox_screenshot_bytes = buf.tobytes()
+
+        # Calculate relative click coordinates within bbox
+        rel_x = int(x) - bbox_dict["x"]
+        rel_y = int(y) - bbox_dict["y"]
+
         ocr_text = self._extract_ocr(bbox_image)
         if ocr_text:
             self.logger.info(f"✓ OCR text: '{ocr_text[:50]}...'")
@@ -301,6 +313,8 @@ class DesignerApp:
 
         return {
             'bbox': bbox_dict,
+            'bbox_screenshot': bbox_screenshot_bytes,
+            'coordinates_rel': {"x": rel_x, "y": rel_y},
             'ocr_text': ocr_text,
             'features': features
         }
@@ -322,6 +336,14 @@ class DesignerApp:
         bbox_dict = self._extract_bbox(x1, y1, screenshot)
         bbox_image = BBoxGenerator.crop_image(screenshot, bbox_dict)
 
+        # Encode start bbox crop as PNG
+        _, buf = cv2.imencode('.png', bbox_image)
+        bbox_screenshot_bytes = buf.tobytes()
+
+        # Calculate relative click coordinates for start point
+        rel_x1 = int(x1) - bbox_dict["x"]
+        rel_y1 = int(y1) - bbox_dict["y"]
+
         ocr_text = self._extract_ocr(bbox_image)
         if ocr_text:
             self.logger.info(f"✓ DRAG start OCR: '{ocr_text[:50]}...'")
@@ -336,6 +358,14 @@ class DesignerApp:
         drag_end_bbox = self._extract_bbox(x2, y2, screenshot)
         drag_end_bbox_image = BBoxGenerator.crop_image(screenshot, drag_end_bbox)
 
+        # Encode end bbox crop as PNG
+        _, buf = cv2.imencode('.png', drag_end_bbox_image)
+        drag_end_bbox_screenshot_bytes = buf.tobytes()
+
+        # Calculate relative click coordinates for end point
+        rel_x2 = int(x2) - drag_end_bbox["x"]
+        rel_y2 = int(y2) - drag_end_bbox["y"]
+
         drag_end_ocr_text = self._extract_ocr(drag_end_bbox_image)
         if drag_end_ocr_text:
             self.logger.info(f"✓ DRAG end OCR: '{drag_end_ocr_text[:50]}...'")
@@ -348,9 +378,13 @@ class DesignerApp:
 
         return {
             'bbox': bbox_dict,
+            'bbox_screenshot': bbox_screenshot_bytes,
+            'coordinates_rel': {"x": rel_x1, "y": rel_y1},
             'ocr_text': ocr_text,
             'features': features,
             'drag_end_bbox': drag_end_bbox,
+            'drag_end_bbox_screenshot': drag_end_bbox_screenshot_bytes,
+            'drag_end_coordinates_rel': {"x": rel_x2, "y": rel_y2},
             'drag_end_ocr_text': drag_end_ocr_text,
             'drag_end_features': drag_end_features
         }

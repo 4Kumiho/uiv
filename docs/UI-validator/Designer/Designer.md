@@ -91,6 +91,37 @@ Screen for viewing, editing, and saving a recorded session.
 
 ---
 
+## 3. Data Structure Optimization (Position-Independent Matching)
+
+### 3.0 What Makes the New Design Robust
+
+The Designer now stores both **absolute** and **relative** coordinates:
+
+```
+Full-screen monitor (1920×1080)
+┌─────────────────────────────────────┐
+│  bbox (absolute): x=100, y=50       │
+│  ┌──────────────────────────────┐   │
+│  │                              │   │
+│  │  click: (180, 110) absolute  │   │
+│  │  click: (80, 60) relative    │   │
+│  │                              │   │
+│  └──────────────────────────────┘   │
+└─────────────────────────────────────┘
+
+coordinates (absolute):   {x: 180, y: 110}
+coordinates_rel:         {x: 80, y: 60}    ← 180-100, 110-50
+```
+
+**Why this matters**:
+- **Absolute data** (`bbox`, `coordinates`) → optimizes matching when window is in original position
+- **Relative data** (`coordinates_rel`) → enables robust matching even when window moves
+- **BBox crop** (`bbox_screenshot`) → allows full-screen search independent of original position
+
+This architecture makes the **Executor** robust to window repositioning while maintaining performance when windows stay in place.
+
+---
+
 ## 3. Detailed Operational Flow - Recording Session
 
 ### 3.1 Mini UI Overlay - Controls and Indicators
@@ -198,10 +229,18 @@ When an action is captured:
 1. _on_action_captured(action_dict):
    - Save screenshot as PNG in {project}/screenshots/step_NNN.png
    - Generate smart BBox from click coordinates
-   - Extract OCR text from BBox
-   - Extract ResNet 512-dimensional feature vector from BBox
+   - Crop image to BBox region (produces bbox_screenshot)
+   - Extract OCR text from BBox crop
+   - Extract ResNet 512-dimensional feature vector from BBox crop
+   - Calculate relative coordinates: rel_x = click_x - bbox.x
    - _save_step_to_db():
-     - Create DesignerStep object
+     - Create DesignerStep object with:
+       * screenshot (full-screen PNG)
+       * bbox (absolute coordinates)
+       * coordinates (absolute click position)
+       * bbox_screenshot (PNG crop of element)
+       * coordinates_rel (relative click position)
+       * ocr_text, features
      - Save to database
    - Increment step counter
    - Update Mini UI with new step number
@@ -210,16 +249,21 @@ When an action is captured:
 2. For DRAG_AND_DROP:
    - Capture 2 coordinates (start + end)
    - Generate 2 BBox (one for start, one for end)
+   - Crop to both BBox regions
    - Extract OCR + ResNet for both
-   - Save both in database (drag_end_bbox, drag_end_ocr_text, drag_end_features)
+   - Calculate relative coordinates for both start and end
+   - Save all data:
+     * bbox, coordinates, bbox_screenshot, coordinates_rel (start)
+     * drag_end_bbox, drag_end_coordinates, drag_end_bbox_screenshot, drag_end_coordinates_rel (end)
 
 3. For INPUT (text):
    - Screenshot taken BEFORE user starts typing
    - User types text (press ENTER for new line)
    - User presses F9 to finish
    - Generate BBox from the initial screenshot
-   - Extract OCR + ResNet from BBox
-   - Save to database with input_text, bbox, ocr_text, features
+   - Crop and extract OCR + ResNet from BBox crop
+   - Calculate relative coordinates
+   - Save to database with input_text, bbox, coordinates_rel, bbox_screenshot, ocr_text, features
 ```
 
 #### Phase 4: Termination
@@ -339,21 +383,33 @@ User presses ESC:
 1. User clicks Save:
    - save_session():
      - For each modified step in _modified_steps:
+       - Logs step information (bbox, coordinates, action_type)
        - _process_step():
          - Decodes screenshot PNG
          - Reads BBox JSON
-         - Crops image to BBox
+         - Crops image to BBox region
          - Launches _ocr_feature_update.py as subprocess:
            - Path: ./src/app/core/designer/_ocr_feature_update.py
            - Arguments: screenshot_path bbox_json
-           - Output: {"ocr_text": "...", "features": "hex_string"}
+           - Output: {"ocr_text": "...", "features": "hex_string", "bbox_screenshot": "hex_string"}
          - Receives JSON output from process
-         - Converts hex string → bytes
-         - Saves step.ocr_text and step.features
-       - For DRAG_AND_DROP: also processes drag_end_bbox
+         - Converts hex strings → bytes
+         - Saves step.ocr_text, step.features, step.bbox_screenshot
+         - Recalculates step.coordinates_rel:
+           * rel_x = coordinates.x - bbox.x
+           * rel_y = coordinates.y - bbox.y
+           * Handles manual bbox edits + manual click point edits
+         - Logs all updates: "ocr_text", "features", "bbox_screenshot", "coordinates_rel"
+       - For DRAG_AND_DROP: also processes drag_end_bbox with same logic
 
-2. After all worker processes finish:
+2. Manual edits in Summary Screen (before Save):
+   - User drags BBox: bbox and coordinates_rel are recalculated immediately
+   - User drags click point: coordinates and coordinates_rel are recalculated immediately
+   - Changes marked in _modified_steps set
+
+3. After all worker processes finish:
    - Opens database connection
+   - Logs "💾 SAVING ALL N STEPS TO DATABASE..."
    - Calls db.update_step(session_id, step) for each modified step
    - Reloads steps from database:
      - Remembers current step_number
@@ -362,6 +418,7 @@ User presses ESC:
      - Calls _show_step_image() to redraw with updated data
    - Clears _modified_steps set
    - Disables Save button
+   - Logs "✅ SESSION SAVED TO DATABASE"
 ```
 
 ### Going Back
@@ -402,13 +459,15 @@ CREATE TABLE designer_step (
   action_type             TEXT NOT NULL,
   -- Types: SINGLE_CLICK, DOUBLE_CLICK, RIGHT_CLICK, SCROLL, INPUT, DRAG_AND_DROP
   
-  -- Screenshot and click location
-  screenshot              BLOB,              -- PNG image bytes
+  -- Screenshot and click location (ABSOLUTE coordinates)
+  screenshot              BLOB,              -- PNG image bytes (full-screen)
   screenshot_path         TEXT,              -- File path to PNG
-  coordinates             TEXT,              -- JSON: {"x": int, "y": int}
+  coordinates             TEXT,              -- JSON: {"x": int, "y": int} (absolute)
   
   -- Main BBox and AI extraction
-  bbox                    TEXT,              -- JSON: {"x": int, "y": int, "w": int, "h": int}
+  bbox                    TEXT,              -- JSON: {"x": int, "y": int, "w": int, "h": int} (absolute)
+  bbox_screenshot         BLOB,              -- PNG image bytes (bbox crop only) — NEW
+  coordinates_rel         TEXT,              -- JSON: {"x": int, "y": int} (relative to bbox) — NEW
   ocr_text                TEXT,              -- Extracted text from BBox
   features                BLOB,              -- ResNet18 512-dim vector (2048 bytes)
   
@@ -421,13 +480,30 @@ CREATE TABLE designer_step (
   scroll_dy               INTEGER,           -- Vertical scroll amount
   
   -- For DRAG_AND_DROP action (end position)
-  drag_end_coordinates    TEXT,              -- JSON: {"x": int, "y": int}
-  drag_end_bbox           TEXT,              -- JSON: {"x": int, "y": int, "w": int, "h": int}
+  drag_end_coordinates    TEXT,              -- JSON: {"x": int, "y": int} (absolute)
+  drag_end_bbox           TEXT,              -- JSON: {"x": int, "y": int, "w": int, "h": int} (absolute)
+  drag_end_bbox_screenshot BLOB,             -- PNG image bytes (drag_end bbox crop) — NEW
+  drag_end_coordinates_rel TEXT,             -- JSON: {"x": int, "y": int} (relative to drag_end_bbox) — NEW
   drag_end_ocr_text       TEXT,              -- Extracted text from end position BBox
   drag_end_features       BLOB,              -- ResNet18 512-dim vector for end position
   
   created_at              DATETIME DEFAULT CURRENT_TIMESTAMP
 )
+```
+
+### New Columns for Position-Independent Matching
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `bbox_screenshot` | BLOB | PNG crop of just the element (for full-screen search in Executor) |
+| `coordinates_rel` | JSON | Click position relative to bbox origin (e.g., `{"x": 80, "y": 60}`) |
+| `drag_end_bbox_screenshot` | BLOB | PNG crop of drag end element |
+| `drag_end_coordinates_rel` | JSON | Drag end position relative to drag_end_bbox |
+
+**Relationship**:
+```
+coordinates_rel.x = coordinates.x - bbox.x
+coordinates_rel.y = coordinates.y - bbox.y
 ```
 
 ### Operations
@@ -621,3 +697,67 @@ Serialized in database as:
 - **Visual Matching**: Find similar UI elements
 - **Clustering**: Group similar elements together
 - **Search**: Find visually related steps in session
+
+---
+
+## 7. Executor Integration (How Designer Data is Used)
+
+The Designer's optimized data structure (with `bbox_screenshot` + `coordinates_rel`) enables the **Executor** to be robust to window repositioning.
+
+### Two-Stage Matching Strategy
+
+**Stage 1: Optimized Match (Original Position)**
+```
+If window hasn't moved:
+  - Load bbox (absolute position)
+  - Look for element at original bbox region
+  - If found → use original coordinates_rel to click
+  - Result: FAST (no full-screen search needed)
+```
+
+**Stage 2: Full-Screen Search (Window Moved)**
+```
+If stage 1 fails OR window likely moved:
+  - Load bbox_screenshot (PNG crop of element)
+  - Load ocr_text + features
+  - Search entire screen for visual match
+  - Voting algorithm: Template Match + OCR + ResNet18
+  - Once found at new location → use coordinates_rel for precise click
+  - Result: ROBUST (works even if window moved)
+```
+
+### Data Flow Example
+
+```
+Recording (Designer saves):
+  bbox: {x: 100, y: 50, w: 200, h: 80}        ← absolute position
+  coordinates: {x: 180, y: 110}                 ← absolute click
+  bbox_screenshot: <PNG crop bytes>             ← element image
+  coordinates_rel: {x: 80, y: 60}               ← relative to bbox
+  ocr_text: "Submit"
+  features: <512-dim ResNet vector>
+
+Execution (Executor uses):
+  Stage 1: Found element at {x: 100, y: 50}
+    → Click at: 100 + 80 = 180, 50 + 60 = 110 ✓
+
+  OR if Stage 1 fails:
+  Stage 2: Found element at {x: 350, y: 200}  (window moved!)
+    → Click at: 350 + 80 = 430, 200 + 60 = 260 ✓
+    → Correct click despite window repositioning!
+```
+
+---
+
+## 8. Future: Executor Architecture
+
+When the Executor is implemented, it will:
+
+1. **Load Designer steps** from the database
+2. **For each step**:
+   - Stage 1: Try original bbox position (fast path)
+   - Stage 2: Full-screen search using bbox_screenshot + features (robust path)
+   - Use coordinates_rel to calculate final click position
+   - Execute action (click, type, drag, etc.)
+3. **Record execution** with success/failure status and match confidence
+4. **Generate summary** showing which steps succeeded and which failed
