@@ -5,10 +5,11 @@ import sys
 
 
 class ColoredFormatter(logging.Formatter):
-    """Custom formatter with colored [DESIGNER] prefix."""
+    """Custom formatter with colored [DESIGNER] or [EXECUTOR] prefix."""
 
     # ANSI color codes
     BLUE = '\033[34m'
+    GREEN = '\033[32m'
     CYAN = '\033[36m'
     RESET = '\033[0m'
 
@@ -21,30 +22,41 @@ class ColoredFormatter(logging.Formatter):
         'CRITICAL': '\033[35m', # Magenta
     }
 
+    def __init__(self, fmt=None, datefmt=None, mode='DESIGNER'):
+        super().__init__(fmt, datefmt)
+        self.mode = mode
+        self.prefix_placeholder = f"[{mode}]"
+
     def format(self, record):
-        # Add color to [DESIGNER] prefix
-        prefix = f"{self.BLUE}[DESIGNER]{self.RESET}"
+        # Choose color based on mode
+        color = self.GREEN if self.mode == 'EXECUTOR' else self.BLUE
+        prefix = f"{color}[{self.mode}]{self.RESET}"
         msg = super().format(record)
-        # Replace [DESIGNER] with colored version
-        msg = msg.replace('[DESIGNER]', prefix, 1)
+        # Replace placeholder with colored version
+        msg = msg.replace(self.prefix_placeholder, prefix, 1)
         return msg
 
 
-def setup_logging():
-    """Configure logging with colored output."""
+def setup_logging(mode='DESIGNER'):
+    """Configure logging with colored output.
+
+    Args:
+        mode: 'DESIGNER' or 'EXECUTOR'
+    """
     # Remove existing handlers
     logging.root.handlers = []
 
     # Create handler with colored formatter
     handler = logging.StreamHandler(sys.stdout)
     formatter = ColoredFormatter(
-        fmt='[DESIGNER] %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S'
+        fmt=f'[{mode}] %(message)s',
+        datefmt='%H:%M:%S',
+        mode=mode
     )
     handler.setFormatter(formatter)
 
     # Configure root logger
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         handlers=[handler]
     )

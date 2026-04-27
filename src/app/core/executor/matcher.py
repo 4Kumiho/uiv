@@ -72,23 +72,16 @@ class Matcher:
                 }
 
             # --- Stage 1: Search near original position ---
-            logger.info(f"Stage 1: Searching near original bbox {bbox_ref}")
             result = self._stage1(current_screenshot, crop_ref, bbox_ref,
                                   designer_step.ocr_text, designer_step.features)
             if result['found']:
                 result['stage'] = 1
-                logger.info(f"Stage 1 match found at {result['bbox']} with score {result['score']:.2f}")
                 return result
 
             # --- Stage 2: Full-screen search ---
-            logger.info("Stage 1 failed, attempting Stage 2 (full-screen)")
             result = self._stage2(current_screenshot, crop_ref,
                                   designer_step.ocr_text, designer_step.features)
             result['stage'] = 2
-            if result['found']:
-                logger.info(f"Stage 2 match found at {result['bbox']} with score {result['score']:.2f}")
-            else:
-                logger.info(f"Stage 2 failed, best score: {result['score']:.2f}")
             return result
 
         except Exception as e:
@@ -104,7 +97,7 @@ class Matcher:
     def _stage1(self, screen, crop_ref, bbox_orig, ocr_ref, features_ref) -> dict:
         """
         Stage 1: Template match in region ±150px around original bbox.
-        Threshold: 0.70
+        Threshold: 0.65
         """
         # Extract search region
         x = max(0, bbox_orig['x'] - self.SEARCH_MARGIN)
@@ -114,16 +107,12 @@ class Matcher:
 
         region = screen[y:y+h, x:x+w]
 
-        logger.debug(f"  Stage1 region: ({x},{y}) size=({w}x{h}), crop_ref size=({crop_ref.shape[1]}x{crop_ref.shape[0]})")
-
         # Template match in region
         result = self._template_match(region, crop_ref)
         if result is None:
-            logger.debug(f"  Stage1: Template match failed (crop too large?)")
             return {'found': False, 'bbox': None, 'score': 0.0, 'error': 'Template match failed'}
 
         match_x, match_y, template_score = result
-        logger.debug(f"  Stage1: Template score={template_score:.3f} at ({match_x},{match_y})")
 
         # Absolute coordinates
         abs_x = x + match_x
@@ -135,7 +124,6 @@ class Matcher:
             return {'found': False, 'bbox': None, 'score': 0.0, 'error': 'Invalid region'}
 
         total_score = self._vote(screen_region, crop_ref, ocr_ref, features_ref, template_score)
-        logger.debug(f"  Stage1: Total vote={total_score:.3f} (threshold={self.STAGE1_THRESHOLD})")
 
         if total_score >= self.STAGE1_THRESHOLD:
             return {
@@ -199,17 +187,10 @@ class Matcher:
         """
         Weighted voting: Template (0.4) + OCR (0.3) + ResNet (0.3).
         """
-        # Template score (already normalized 0-1)
         t_score = template_score
-
-        # OCR score
         o_score = self._ocr_score(screen_region, ocr_ref)
-
-        # ResNet score
         r_score = self._resnet_score(screen_region, features_ref)
-
         total = 0.4 * t_score + 0.3 * o_score + 0.3 * r_score
-        logger.debug(f"    Vote: template={t_score:.3f}(0.4) + ocr={o_score:.3f}(0.3) + resnet={r_score:.3f}(0.3) = {total:.3f}")
         return min(1.0, max(0.0, total))
 
     def _ocr_score(self, screen_region, ocr_ref) -> float:
@@ -271,7 +252,6 @@ class Matcher:
             0.0-1.0
         """
         if features_ref is None:
-            logger.debug(f"      ResNet: features_ref is None")
             return 0.0
 
         try:
@@ -282,7 +262,6 @@ class Matcher:
                     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'designer'))
                     from _feature_generator import FeatureGenerator
                     _feature_gen = FeatureGenerator()
-                    logger.debug(f"      ResNet: Loaded FeatureGenerator")
                 except Exception as e:
                     logger.warning(f"FeatureGenerator not available: {e}")
                     return 0.0
@@ -290,10 +269,7 @@ class Matcher:
             # Extract features from screen region
             features_screen = _feature_gen.extract(screen_region)
             if features_screen is None:
-                logger.debug(f"      ResNet: extract() returned None")
                 return 0.0
-
-            logger.debug(f"      ResNet: extracted {type(features_screen)} shape={getattr(features_screen, 'shape', 'N/A')}")
 
             # Convert features_screen to numpy array (it may come as bytes or ndarray)
             if isinstance(features_screen, bytes):
@@ -301,7 +277,6 @@ class Matcher:
             elif isinstance(features_screen, np.ndarray):
                 features_screen = features_screen.flatten().astype(np.float32)
             else:
-                logger.debug(f"      ResNet: unknown type {type(features_screen)}")
                 return 0.0
 
             # Decode reference features

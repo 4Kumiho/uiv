@@ -23,7 +23,7 @@ from src.app.core.database.models import DesignerStep
 from _bbox_generator import BBoxGenerator
 from _ocr_generator import OCRGenerator
 from _feature_generator import FeatureGenerator
-from logging_config import setup_logging
+from src.app.core.utils.logging_config import setup_logging
 
 
 class DesignerApp:
@@ -453,7 +453,7 @@ if __name__ == "__main__":
         db_path = os.path.join(project_folder, f"{session_name}.db")
 
         # Configure logging with colored output
-        setup_logging()
+        setup_logging(mode='DESIGNER')
         logger = logging.getLogger(__name__)
 
         logger.info(f"Project folder: {project_folder}")
@@ -479,7 +479,7 @@ if __name__ == "__main__":
         db_path = os.path.join(temp_dir, "ui_validator_designer.db")
 
         # Configure logging with colored output
-        setup_logging()
+        setup_logging(mode='DESIGNER')
 
         app = DesignerApp("test_session", db_path)
         app.start()

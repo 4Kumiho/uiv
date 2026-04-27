@@ -16,19 +16,19 @@ sys.path.insert(0, os.path.dirname(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'database'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'designer'))
 
-from screenshot_handler import ScreenshotHandler
-from matcher import Matcher
-from action_executor import ActionExecutor
-from video_recorder import VideoRecorder
-from mini_ui import MiniUI
+from src.app.core.designer.screenshot_handler import ScreenshotHandler
+from src.app.core.executor.matcher import Matcher
+from src.app.core.executor.action_executor import ActionExecutor
+from src.app.core.executor.video_recorder import VideoRecorder
+from src.app.core.designer.mini_ui import MiniUI
 from src.app.core.database.executor_db import ExecutorDatabase
 from src.app.core.database.designer_db import DesignerDatabase
 from src.app.core.database.models import ExecutionStep
-from logging_config import setup_logging
+from src.app.core.utils.logging_config import setup_logging
 
 # Setup logging
 try:
-    setup_logging()
+    setup_logging(mode='EXECUTOR')
 except:
     pass
 
@@ -67,25 +67,20 @@ class ExecutorApp:
     def start(self):
         """Avvia l'executor."""
         try:
-            self.logger.info(f"Starting Executor: {self.session_name}")
-            self.logger.info(f"Designer DB: {self.designer_db_path}")
-            self.logger.info(f"Output: {self.session_folder}")
+            self.logger.info(f"Starting session: {self.session_name}")
 
             # 1. Create session folder
             os.makedirs(self.session_folder, exist_ok=True)
 
             # 2. Load designer DB and session
-            self.logger.info("Loading designer session...")
             self.designer_db = DesignerDatabase(self.designer_db_path)
-            # Get last session (or could take session_id as param)
-            # For now, assume single session in DB
             designer_db_obj = self.designer_db.get_session(1)
             if not designer_db_obj:
                 raise RuntimeError("No designer session found in DB")
 
             self.designer_session = designer_db_obj
             self.designer_steps = self.designer_db.get_steps(designer_db_obj.id)
-            self.logger.info(f"Loaded {len(self.designer_steps)} designer steps")
+            self.logger.debug(f"Loaded {len(self.designer_steps)} designer steps")
 
             # 3. Create executor DB and session
             self.executor_db = ExecutorDatabase(self.executor_db_path)
@@ -94,7 +89,7 @@ class ExecutorApp:
                 designer_db_path=self.designer_db_path,
                 designer_session_id=designer_db_obj.id
             )
-            self.logger.info(f"Created execution session ID: {self.session.id}")
+            self.logger.debug(f"Session ID: {self.session.id}")
 
             # 4. Get monitor info
             self._get_monitor_info()
@@ -106,7 +101,6 @@ class ExecutorApp:
             self.video_recorder = VideoRecorder(self.video_path, self.monitor_info)
 
             # 6. Show Mini UI
-            self.logger.info("Creating Mini UI...")
             self.mini_ui = MiniUI(
                 mode='EXECUTOR',
                 on_end_callback=self._on_stop,
@@ -114,22 +108,16 @@ class ExecutorApp:
             )
             self.mini_ui.update()
             time.sleep(0.3)
-            self.logger.info("Mini UI created")
 
             # 7. Preload models
-            self.logger.info("Preloading models...")
             self._preload_models()
-            self.logger.info("Models ready")
 
             # 8. Start video recording
-            self.logger.info("Starting video recording...")
             self.video_recorder.start()
 
             # Set ready state
             self.mini_ui.set_ready()
-            self.logger.info("=" * 60)
-            self.logger.info("EXECUTOR READY - Beginning execution")
-            self.logger.info("=" * 60)
+            self.logger.info("Ready - Beginning execution")
 
             # 9. Main execution loop
             self._execute_steps()
@@ -187,15 +175,16 @@ class ExecutorApp:
         """Main execution loop."""
         for i, designer_step in enumerate(self.designer_steps):
             step_num = i + 1
+            total_steps = len(self.designer_steps)
             self.mini_ui.set_step(step_num)
 
             if self.should_stop:
-                self.logger.info(f"Step {step_num}: Execution stopped by user")
+                self.logger.info(f"Step {step_num}/{total_steps}: STOPPED")
                 self._save_step(designer_step, 'STOPPED', error_msg="Stopped by user")
                 continue
 
             try:
-                self.logger.info(f"Step {step_num}/{len(self.designer_steps)}: {designer_step.action_type}")
+                self.logger.info(f"Step {step_num}/{total_steps}: {designer_step.action_type}")
                 self.mini_ui.set_saving()
 
                 # 1. Capture current screenshot
@@ -210,7 +199,6 @@ class ExecutorApp:
                     # 3. Execute action
                     try:
                         self.action_executor.execute(designer_step, match['bbox'])
-                        self.logger.info(f"  ✓ Action executed")
 
                         # 4. Wait for screen to stabilize (5 seconds timeout for UI changes)
                         screenshot_after = self.screenshot_handler.wait_for_screen_stability(timeout_ms=5000)
@@ -226,6 +214,7 @@ class ExecutorApp:
                             screenshot_after=buf.tobytes(),
                             video_timestamp=self.video_recorder.get_timestamp()
                         )
+                        self.logger.info(f"  SUCCESS")
                     except Exception as e:
                         self.logger.error(f"  ✗ Action execution failed: {e}")
                         self._save_step(
@@ -237,8 +226,9 @@ class ExecutorApp:
                             error_msg=f"Action execution failed: {str(e)}",
                             video_timestamp=self.video_recorder.get_timestamp()
                         )
+                        self.logger.info(f"  FAIL")
                 else:
-                    self.logger.warning(f"  ✗ No match found (best score: {match['score']:.2f})")
+                    self.logger.info(f"  ✗ No match found (score {match['score']:.2f})")
                     self._save_step(
                         designer_step,
                         'FAIL',
@@ -246,12 +236,14 @@ class ExecutorApp:
                         error_msg=match['error'] or "Element not found",
                         video_timestamp=self.video_recorder.get_timestamp()
                     )
+                    self.logger.info(f"  FAIL")
 
                 self.mini_ui.set_ready()
 
             except Exception as e:
-                self.logger.error(f"Step {step_num} error: {e}", exc_info=True)
+                self.logger.error(f"Step {step_num}/{total_steps} error: {e}", exc_info=True)
                 self._save_step(designer_step, 'FAIL', error_msg=str(e))
+                self.logger.info(f"  FAIL")
                 self.mini_ui.set_ready()
 
     def _save_step(self, designer_step, status: str, match_score=None, match_stage=None,
@@ -276,15 +268,10 @@ class ExecutorApp:
 
     def _finalize(self):
         """Finalize execution."""
-        self.logger.info("=" * 60)
-        self.logger.info("EXECUTION COMPLETED")
-        self.logger.info("=" * 60)
-
         # Stop video recording
         try:
-            self.logger.info("Stopping video recording...")
             self.video_recorder.stop()
-            self.logger.info(f"Video saved to {self.video_path}")
+            self.logger.debug(f"Video saved to {self.video_path}")
         except Exception as e:
             self.logger.error(f"Error stopping video: {e}")
 
