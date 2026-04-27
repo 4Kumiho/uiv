@@ -8,3 +8,7 @@ __pycache__/
 src/bin/ffmpeg.exe
 src/bin/ffplay.exe
 src/bin/*.exe
+
+# tests and test data
+.test_skyflight/
+
