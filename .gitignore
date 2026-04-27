@@ -3,3 +3,7 @@
 
 # pychache
 __pycache__/
+
+# Executable files
+ffmpeg.exe
+ffplay.exe
