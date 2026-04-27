@@ -428,6 +428,13 @@ class ActionCapture:
                     self.input_text += '\n'
                     logger.debug("Newline added to input")
 
+            # SPACE = Space character
+            elif key == keyboard.Key.space:
+                logger.debug("✓ SPACE detected")
+                if self.input_active:
+                    self.input_text += ' '
+                    logger.debug("Space added to input")
+
             # Caratteri normali
             elif hasattr(key, 'char') and key.char:
                 logger.debug(f"Char detected: '{key.char}'")

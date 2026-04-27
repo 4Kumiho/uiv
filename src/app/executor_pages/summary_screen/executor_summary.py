@@ -5,8 +5,9 @@ import sys
 import json
 from kivy.uix.screenmanager import Screen
 from kivy.lang import Builder
-from kivy.properties import StringProperty, ListProperty
-from kivy.uix.button import Button
+from kivy.properties import StringProperty, ListProperty, BooleanProperty
+from kivy.uix.boxlayout import BoxLayout
+from kivy.core.window import Window
 
 # Add project root to path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
@@ -18,11 +19,46 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'core', '
 Builder.load_file(os.path.join(os.path.dirname(__file__), "executor_summary.kv"))
 
 
+class ExecutorStepRow(BoxLayout):
+    """Custom step row widget for executor summary."""
+    step_number = StringProperty("")
+    action_label = StringProperty("")
+    status_label = StringProperty("")
+    status_color = ListProperty([0.5, 0.5, 0.8, 1])
+    is_selected = ListProperty([0.08, 0.08, 0.16, 1])  # Default background
+    step = None
+    on_click_callback = None
+
+    def __init__(self, step_number, action_label, status, status_color, **kwargs):
+        super().__init__(**kwargs)
+        self.step_number = str(step_number)
+        self.action_label = action_label
+        self.status_label = status
+        self.status_color = status_color
+        self.step = None
+
+    def set_selected(self, selected):
+        """Set selection state."""
+        if selected:
+            self.is_selected = [0.12, 0.20, 0.35, 0.8]  # Selected background
+        else:
+            self.is_selected = [0.08, 0.08, 0.16, 1]  # Default background
+
+    def on_touch_down(self, touch):
+        """Handle touch/click on step row."""
+        if self.collide_point(*touch.pos):
+            if self.on_click_callback:
+                self.on_click_callback(self)
+            return True
+        return super().on_touch_down(touch)
+
+
 class ExecutorSummaryScreen(Screen):
     SCREEN_NAME = "executor_summary"
     title = StringProperty("Execution Summary")
     session_status = StringProperty("UNKNOWN")
     status_color = ListProperty([1, 1, 1, 1])
+    _session_label = StringProperty("—")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -33,6 +69,7 @@ class ExecutorSummaryScreen(Screen):
         self.session = None
         self.steps = None
         self._current_step = None
+        self._step_rows = []
 
     def load_session(self, execution_id: int, db_path: str, video_path: str = None):
         """Load execution session and populate UI."""
@@ -55,6 +92,7 @@ class ExecutorSummaryScreen(Screen):
 
             # Update title and status
             self.title = f"Execution: {self.session.name}"
+            self._session_label = f"{self.session.status or 'UNKNOWN'} • {len(self.steps)} steps"
             self.session_status = self.session.status or "UNKNOWN"
 
             # Set status color
@@ -84,44 +122,45 @@ class ExecutorSummaryScreen(Screen):
             traceback.print_exc()
 
     def _populate_steps(self):
-        """Populate step list with colored buttons."""
+        """Populate step list with ExecutorStepRow widgets."""
         if not self.steps:
             return
 
         steps_container = self.ids.steps_container
         steps_container.clear_widgets()
+        self._step_rows = []
 
         for i, step in enumerate(self.steps, 1):
-            # Determine color based on status
+            # Determine color based on status (status label is empty - color shows status)
             if step.status == 'PASS':
-                color = [0.2, 0.8, 0.3, 1]  # Green
-                symbol = "✓"
+                status_color = [0.2, 0.8, 0.3, 1]  # Green
             elif step.status == 'FAIL':
-                color = [0.9, 0.2, 0.2, 1]  # Red
-                symbol = "✗"
+                status_color = [0.9, 0.2, 0.2, 1]  # Red
             elif step.status == 'STOPPED':
-                color = [0.9, 0.8, 0.1, 1]  # Yellow
-                symbol = "—"
+                status_color = [0.9, 0.8, 0.1, 1]  # Yellow
             else:
-                color = [0.5, 0.5, 0.5, 1]  # Gray
-                symbol = "?"
+                status_color = [0.5, 0.5, 0.5, 1]  # Gray
 
-            # Create step button
-            btn = Button(
-                text=f"{symbol} {i}. {step.action_type}",
-                size_hint_y=None,
-                height=40,
-                background_color=color,
-                color=[0, 0, 0, 1]
+            # Create ExecutorStepRow
+            row = ExecutorStepRow(
+                step_number=i,
+                action_label=step.action_type,
+                status="",  # Empty - color only
+                status_color=status_color
             )
-            btn.step = step
-            btn.bind(on_press=self._on_step_selected)
-            steps_container.add_widget(btn)
+            row.step = step
+            row.on_click_callback = self._on_step_selected
+            steps_container.add_widget(row)
+            self._step_rows.append(row)
 
-    def _on_step_selected(self, btn):
+    def _on_step_selected(self, row):
         """Handle step selection."""
-        step = btn.step
+        step = row.step
         self._current_step = step
+
+        # Update selection visual state
+        for r in self._step_rows:
+            r.set_selected(r is row)
 
         # Jump video to step timestamp
         if step.video_timestamp is not None:

@@ -173,6 +173,8 @@ class ExecutorApp:
 
     def _execute_steps(self):
         """Main execution loop."""
+        last_matched_bbox = None  # Store bbox from previous step for INPUT actions
+
         for i, designer_step in enumerate(self.designer_steps):
             step_num = i + 1
             total_steps = len(self.designer_steps)
@@ -187,30 +189,21 @@ class ExecutorApp:
                 self.logger.info(f"Step {step_num}/{total_steps}: {designer_step.action_type}")
                 self.mini_ui.set_saving()
 
-                # 1. Capture current screenshot
-                screenshot = self.screenshot_handler.capture_full_screen()
+                # INPUT actions don't have bbox - they use the previous step's location
+                if designer_step.action_type == 'INPUT':
+                    if last_matched_bbox is None:
+                        raise RuntimeError("INPUT action has no previous matched element")
 
-                # 2. Match element
-                match = self.matcher.find(designer_step, screenshot)
-
-                if match['found']:
-                    self.logger.info(f"  ✓ Match found (stage {match['stage']}, score {match['score']:.2f})")
-
-                    # 3. Execute action
+                    # Execute INPUT without matching (use previous bbox)
+                    self.logger.info(f"  ✓ Using previous element location")
                     try:
-                        self.action_executor.execute(designer_step, match['bbox'])
-
-                        # 4. Wait for screen to stabilize (5 seconds timeout for UI changes)
+                        self.action_executor.execute(designer_step, last_matched_bbox)
                         screenshot_after = self.screenshot_handler.wait_for_screen_stability(timeout_ms=5000)
-
-                        # 5. Save step as PASS
                         _, buf = cv2.imencode('.png', screenshot_after)
                         self._save_step(
                             designer_step,
                             'PASS',
-                            match_score=match['score'],
-                            match_stage=match['stage'],
-                            matched_bbox=match['bbox'],
+                            matched_bbox=last_matched_bbox,
                             screenshot_after=buf.tobytes(),
                             video_timestamp=self.video_recorder.get_timestamp()
                         )
@@ -220,23 +213,57 @@ class ExecutorApp:
                         self._save_step(
                             designer_step,
                             'FAIL',
-                            match_score=match['score'],
-                            match_stage=match['stage'],
-                            matched_bbox=match['bbox'],
+                            matched_bbox=last_matched_bbox,
                             error_msg=f"Action execution failed: {str(e)}",
                             video_timestamp=self.video_recorder.get_timestamp()
                         )
                         self.logger.info(f"  FAIL")
                 else:
-                    self.logger.info(f"  ✗ No match found (score {match['score']:.2f})")
-                    self._save_step(
-                        designer_step,
-                        'FAIL',
-                        match_score=match['score'],
-                        error_msg=match['error'] or "Element not found",
-                        video_timestamp=self.video_recorder.get_timestamp()
-                    )
-                    self.logger.info(f"  FAIL")
+                    # For non-INPUT actions, match the element
+                    screenshot = self.screenshot_handler.capture_full_screen()
+                    match = self.matcher.find(designer_step, screenshot)
+
+                    if match['found']:
+                        self.logger.info(f"  ✓ Match found (stage {match['stage']}, score {match['score']:.2f})")
+                        last_matched_bbox = match['bbox']  # Store for potential INPUT action
+
+                        # 3. Execute action
+                        try:
+                            self.action_executor.execute(designer_step, match['bbox'])
+                            screenshot_after = self.screenshot_handler.wait_for_screen_stability(timeout_ms=5000)
+                            _, buf = cv2.imencode('.png', screenshot_after)
+                            self._save_step(
+                                designer_step,
+                                'PASS',
+                                match_score=match['score'],
+                                match_stage=match['stage'],
+                                matched_bbox=match['bbox'],
+                                screenshot_after=buf.tobytes(),
+                                video_timestamp=self.video_recorder.get_timestamp()
+                            )
+                            self.logger.info(f"  SUCCESS")
+                        except Exception as e:
+                            self.logger.error(f"  ✗ Action execution failed: {e}")
+                            self._save_step(
+                                designer_step,
+                                'FAIL',
+                                match_score=match['score'],
+                                match_stage=match['stage'],
+                                matched_bbox=match['bbox'],
+                                error_msg=f"Action execution failed: {str(e)}",
+                                video_timestamp=self.video_recorder.get_timestamp()
+                            )
+                            self.logger.info(f"  FAIL")
+                    else:
+                        self.logger.info(f"  ✗ No match found (score {match['score']:.2f})")
+                        self._save_step(
+                            designer_step,
+                            'FAIL',
+                            match_score=match['score'],
+                            error_msg=match['error'] or "Element not found",
+                            video_timestamp=self.video_recorder.get_timestamp()
+                        )
+                        self.logger.info(f"  FAIL")
 
                 self.mini_ui.set_ready()
 

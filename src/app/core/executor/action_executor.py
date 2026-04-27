@@ -78,15 +78,26 @@ class ActionExecutor:
             self._keyboard.release(keyboard.Key.enter)
 
     def _execute_input(self, designer_step):
-        """Execute text input action."""
+        """Execute text input action.
+
+        Note: INPUT assumes the field is already focused (by previous CLICK step).
+        Only types the text - does not click first.
+        """
         text = designer_step.input_text or ""
         logger.info(f"Typing: {text[:50]}..." if len(text) > 50 else f"Typing: {text}")
 
-        self._keyboard.type(text)
+        # Type character by character to handle spaces properly
+        for char in text:
+            if char == ' ':
+                self._keyboard.press(keyboard.Key.space)
+                self._keyboard.release(keyboard.Key.space)
+            else:
+                self._keyboard.type(char)
+            time.sleep(0.02)  # Small delay between characters
 
         if designer_step.press_enter_after:
             logger.debug("Pressing Enter after input")
-            time.sleep(0.2)
+            time.sleep(0.1)
             self._keyboard.press(keyboard.Key.enter)
             self._keyboard.release(keyboard.Key.enter)
 
@@ -111,9 +122,19 @@ class ActionExecutor:
         self._mouse.position = (start_x, start_y)
         time.sleep(0.1)
 
-        # Drag to end
+        # Drag to end with gradual movement (simulate natural dragging)
         self._mouse.press(mouse.Button.left)
-        self._mouse.position = (end_x, end_y)
+        time.sleep(0.1)
+
+        # Move gradually from start to end in steps
+        num_steps = 20
+        for i in range(num_steps + 1):
+            progress = i / num_steps
+            x = int(start_x + (end_x - start_x) * progress)
+            y = int(start_y + (end_y - start_y) * progress)
+            self._mouse.position = (x, y)
+            time.sleep(0.02)
+
         self._mouse.release(mouse.Button.left)
 
     def _execute_scroll(self, designer_step, found_bbox: dict):
