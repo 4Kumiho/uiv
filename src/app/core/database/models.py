@@ -1,7 +1,7 @@
-"""SQLAlchemy models per Designer."""
+"""SQLAlchemy models per Designer and Executor."""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, LargeBinary, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, LargeBinary, DateTime, Boolean, ForeignKey, Float
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -59,3 +59,39 @@ class DesignerStep(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     session = relationship("DesignerSession", back_populates="steps")
+
+
+class ExecutionSession(Base):
+    __tablename__ = "execution_session"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)
+    designer_db_path = Column(String, nullable=True)
+    designer_session_id = Column(Integer, nullable=True)
+    video_path = Column(String, nullable=True)
+    status = Column(String, nullable=True)  # COMPLETED, STOPPED, FAILED
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    steps = relationship("ExecutionStep", back_populates="session",
+                         order_by="ExecutionStep.step_number",
+                         cascade="all, delete-orphan")
+
+
+class ExecutionStep(Base):
+    __tablename__ = "execution_step"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("execution_session.id"), nullable=False)
+    designer_step_id = Column(Integer, nullable=False)
+    step_number = Column(Integer, nullable=False)
+    action_type = Column(String, nullable=False)
+    status = Column(String, nullable=True)  # PASS, FAIL, STOPPED
+    match_score = Column(Float, nullable=True)
+    match_stage = Column(Integer, nullable=True)
+    matched_bbox = Column(String, nullable=True)  # JSON {x,y,w,h}
+    screenshot_after = Column(LargeBinary, nullable=True)
+    video_timestamp = Column(Float, nullable=True)
+    error_msg = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    session = relationship("ExecutionSession", back_populates="steps")

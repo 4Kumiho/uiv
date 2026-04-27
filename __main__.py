@@ -15,6 +15,7 @@ from src.app.designer_pages.open_screen.designer_open import DesignerOpenScreen
 from src.app.designer_pages.summary_screen.designer_summary import DesignerSummaryScreen
 from src.app.executor_pages.create_screen.executor_create import ExecutorCreateScreen
 from src.app.executor_pages.open_screen.executor_open import ExecutorOpenScreen
+from src.app.executor_pages.summary_screen.executor_summary import ExecutorSummaryScreen
 
 
 class UIValidatorApp(App):
@@ -30,9 +31,10 @@ class UIValidatorApp(App):
         sm.add_widget(DesignerCreateScreen(name=DesignerCreateScreen.SCREEN_NAME))
         sm.add_widget(DesignerOpenScreen(name=DesignerOpenScreen.SCREEN_NAME))
         sm.add_widget(DesignerSummaryScreen(name=DesignerSummaryScreen.SCREEN_NAME))
-        
+
         sm.add_widget(ExecutorCreateScreen(name=ExecutorCreateScreen.SCREEN_NAME))
         sm.add_widget(ExecutorOpenScreen(name=ExecutorOpenScreen.SCREEN_NAME))
+        sm.add_widget(ExecutorSummaryScreen(name=ExecutorSummaryScreen.SCREEN_NAME))
         sm.current = MainScreen.SCREEN_NAME
 
         return sm
